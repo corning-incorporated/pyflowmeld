@@ -198,18 +198,34 @@ def is_float(element: str) -> bool:
     except ValueError:
         return False 
 
-# geometry tools #
+# ==== geometry tools ====#
+# -- array refinement to increase resolution --#
 def refine_array(domain: np.ndarray, factor: int = 2) -> np.ndarray:
-    if factor > 1:
-        indices = np.where(domain != 0)
-        l,w,h = domain.shape 
-        fine_array = np.zeros((l*factor, w*factor, h*factor))
-        for i,j,k in zip(*indices):
-            fine_slice = (slice(i*factor, (i + 1)*factor), 
-                            slice(j*factor, (j + 1)*factor), 
-                                slice(k*factor, (k + 1)*factor))
-            fine_array[fine_slice] = 1 
-        return fine_array
+    """
+    It upscales a mask (zero/nonzero) array by a given factor, 
+    where each "on" voxel in the coarse domain becomes a solid block of 1s in the refined, larger domain.
+    It's commonly used to refine or increase the resolution of binary masks.
+
+    Parameters
+    ----------
+    domain : np.ndarray
+        A 3D numpy array (usually binary/mask).
+    factor : int
+        Refinement factor for each spatial dimension.
+        
+    Returns
+    -------
+    np.ndarray
+        Refined 3D array, shape is (l*factor, w*factor, h*factor).
+    """
+    if not (isinstance(domain, np.ndarray) and domain.ndim == 3):
+        raise ValueError("domain must be a 3D numpy array to refine")
+    if factor < 1:
+        raise ValueError("domain compression not possible")
+    if factor == 1:
+        return domain.copy()
+
+    return np.kron(domain, np.ones((factor, factor, factor), dtype = domain.dtype))
 
 # remove paddings
 def remove_padding(domain: np.ndarray, padding: Sequence) -> np.ndarray:
@@ -227,6 +243,7 @@ def remove_padding(domain: np.ndarray, padding: Sequence) -> np.ndarray:
         domain = domain[:,:,:-padding[5]]
     return domain 
 
+#-- loads the array from a file and reshapes and trims it --#
 def load_reshape_trim(file_info: PathLike, domain_size: np.ndarray,
                          trim: Sequence = [0]*6) -> np.ndarray:
     """
