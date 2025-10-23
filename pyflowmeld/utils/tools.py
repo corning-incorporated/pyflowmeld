@@ -229,26 +229,34 @@ def remove_padding(domain: np.ndarray, padding: Sequence) -> np.ndarray:
 
 def load_reshape_trim(file_info: PathLike, domain_size: np.ndarray,
                          trim: Sequence = [0]*6) -> np.ndarray:
-    rho_f = np.loadtxt(file_info).reshape(domain_size)
-    if trim[0] != 0:
-        rho_f = rho_f[trim[0]:,:,:]
-    if trim[1] != 0:
-        rho_f = rho_f[:-trim[1],:,:]
-    if trim[2] != 0:
-        rho_f = rho_f[:, trim[2]:, :]
-    if trim[3] != 0:
-        rho_f = rho_f[:, :-trim[3],:]
-    if trim[4] != 0:
-        rho_f = rho_f[:,:,trim[4]:]
-    if trim[5] != 0:
-        rho_f = rho_f[:,:,:-trim[5]]
-    return rho_f 
+    """
+    Loads an array from file, reshapes to domain_size, 
+    and trims (removes) specified amount from each edge/padding.
 
-# #### get slice #### #
-def get_slice(direction: Literal['x', 'y', 'z'], coordinate: float, resolution: Sequence) -> Tuple:
-    res_x, res_y, res_z = resolution 
-    slice_index = {'x': (slice(coordinate, coordinate + 1), slice(0, res_y), slice(0, res_z)), 
-                        'y': (slice(0, res_x), slice(coordinate, coordinate + 1), slice(0, res_z)), 
-                            'z': (slice(0, res_x), slice(0, res_y), slice(coordinate, coordinate + 1))}[direction]
-    return slice_index 
+    Parameters
+    ----------
+    file_info : PathLike
+        Path to file to load (assumed numeric text, np.loadtxt compatible)
+    domain_size : Sequence[int]
+        Shape to reshape to (e.g. (nx, ny, nz))
+    trim : Sequence[int]
+        Padding to remove (left, right, front, back, bottom, top)
+
+    Returns
+    -------
+    np.ndarray
+        The trimmed array of shape:
+            (nx - (left + right), ny - (front + back), nz - (bottom + top))
+    """
+    arr = np.loadtxt(file_info).reshape(domain_size)
+    if len(trim) != 6:
+        raise ValueError("Trim argument must be a sequence of len 6: (x0,x1,y0,y1,z0,z1)")
+    x0,x1,y0,y1,z0,z1 = trim 
+    slices = (
+        slice(x0, None if x1 == 0 else -x1), 
+        slice(y0, None if y1 == 0 else -y1), 
+        slice(z1, None if z1 == 0 else -z1)
+    )
+    return arr[slices]
+
 

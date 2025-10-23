@@ -656,7 +656,6 @@ class PhaseDistributionTracker:
 # Phase Statistics Calculator   #
 # ############################# #
 
-
 class PhaseStatisticsCalculator:
     """Computes comprehensive statistics and histograms for phase distributions"""
     
