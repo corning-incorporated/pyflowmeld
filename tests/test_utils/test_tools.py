@@ -17,8 +17,9 @@
 # David Heine   Principal Scientist and Manager         #
 #               heinedr@corning.com                     #
 # ##################################################### #
+import pytest 
+import numpy as np 
 from os import path 
-import numpy as np
 from pyflowmeld.utils.tools import load_reshape_trim, refine_array
 
 #-- test basic functions of load_reshape_trim --#
@@ -69,3 +70,23 @@ class TestRefineArray:
         refined_ratio = refined_ones / refined_total
         assert np.isclose(orig_ratio, refined_ratio), \
             f"Original ratio {orig_ratio}, refined ratio {refined_ratio}"   
+
+    @pytest.mark.parametrize("factor", [1, 2, 3, 4, 5])
+    def test_refined_array_density_and_shape(self, factor):
+        np.random.seed(0)
+        original = (np.random.rand(3, 3, 3) > 0.5).astype(int)
+        refined = refine_array(original, factor=factor)
+
+        # Shape should match expectation
+        assert refined.shape == tuple(np.array(original.shape) * factor)
+
+        # Count and ratio checks
+        orig_ones = np.count_nonzero(original)
+        orig_total = original.size
+        refined_ones = np.count_nonzero(refined)
+        refined_total = refined.size
+
+        assert refined_ones == orig_ones * factor ** 3
+        orig_ratio = orig_ones / orig_total
+        refined_ratio = refined_ones / refined_total
+        assert np.isclose(orig_ratio, refined_ratio)
