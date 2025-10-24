@@ -384,7 +384,7 @@ class PoreNetwork3D:
                              save_name = None, file_format = 'lbm', 
                                 padding = None, method = 'snow2'):
         """
-        reads a file (palabos or toma 'cet' format)
+        reads a file: file format can be 
         domain_size = [size_x, size_y, size_z]: required for palabos format 
         slice_size and min_slice: if more slicing is needed
         slice_size: integer
