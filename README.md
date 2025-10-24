@@ -5,7 +5,7 @@
 [![Dependency: NumPy](https://img.shields.io/badge/NumPy-%3E%3D1.20-blue.svg?logo=numpy)](https://numpy.org/)
 [![Dependency: PoreSpy](https://img.shields.io/badge/PoreSpy-%3E%3D2.0.0-brightgreen)](https://github.com/PMEAL/porespy)
 [![Dependency: OpenPNM](https://img.shields.io/badge/OpenPNM-%3E%3D3.0.0-brightgreen)](https://github.com/PMEAL/OpenPNM)
-[![Stars](https://img.shields.io/github/stars/yourusername/pyflowmeld.svg?style=social)](https://github.com/yourusername/pyflowmeld/stargazers)
+
 
 ## 📋 Project Overview
 
