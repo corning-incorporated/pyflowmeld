@@ -2,7 +2,6 @@
 
 [![Language: Python](https://img.shields.io/badge/language-Python%203.8%2B-blue.svg?logo=python)](https://www.python.org/)
 [![Build Tool: pip/conda](https://img.shields.io/badge/build%20tool-pip%20%7C%20conda-blue.svg?logo=pip)](https://pip.pypa.io/)
-[![Dependency: NumPy](https://img.shields.io/badge/NumPy-%3E%3D1.20-blue.svg?logo=numpy)](https://numpy.org/)
 [![Dependency: PoreSpy](https://img.shields.io/badge/PoreSpy-%3E%3D2.0.0-brightgreen)](https://github.com/PMEAL/porespy)
 [![Dependency: OpenPNM](https://img.shields.io/badge/OpenPNM-%3E%3D3.0.0-brightgreen)](https://github.com/PMEAL/OpenPNM)
 
