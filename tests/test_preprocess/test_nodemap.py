@@ -40,6 +40,7 @@ class TestNodeMap:
     """
     Test class for NodeMap base class
     """
+    #-- add test methods here --#
     def test_node_map_initialization(self, temp_dir):
         shape = (20,20,20)
         domain = np.ones(shape, dtype = int)
@@ -56,5 +57,34 @@ class TestNodeMap:
         expected_file = Path(temp_dir) / "orig_domain_no_pad_testcase.dat"
         assert expected_file.exists()
         assert nm.which_sidewall == []
+    
+    #-- testing add padding --#
+    @pytest.mark.parametrize(
+    "padding, expected_shape",
+    [
+        (None, (5, 5, 5)),             # No padding
+        (0, (5, 5, 5)),                # 0-padding everywhere
+        ([0, 0, 0, 0, 0, 0], (5, 5, 5)),
+        (1, (7, 7, 7)),                # pad 1 on each side, all axes: original + 2*1 each
+        ([1, 2, 0, 0, 0, 0], (8, 5, 5)),  # different min/max on x
+        ([1, 2, 3, 4, 0, 0], (8, 12, 5)), # nonzero on y
+        ([0, 0, 0, 0, 5, 6], (5, 5, 16)), # only z
+    ],           
+    )
+    def test_add_padding_works_for_all_valid_paddings(self, 
+        temp_dir,
+        padding, 
+        expected_shape):
+        """ 
+        test add_padding works for all valid paddings
+        """
+        domain = np.ones((5,5,5), dtype = int)
+        nm = ConcreteNodeMap(domain = domain, file_stem = "pad", 
+            save_path = temp_dir, padding = padding)
+        nm.add_padding()
+        assert nm.domain.shape == expected_shape, "paddings were not applied correctly" 
+
+    
+
 
 
