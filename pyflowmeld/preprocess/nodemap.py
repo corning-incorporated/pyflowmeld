@@ -406,11 +406,14 @@ class NodeMap(metaclass = ABCMeta):
         """
         if value is None:
             return np.array([default] * 6)
-        elif isinstance(value, int):
+        elif isinstance(value, int) and value >= 0:
             return np.array([value] * 6)
         elif isinstance(value, (tuple, list)):
             if len(value) == 6:
-                return np.array(value)
+                arr = np.array(value)
+                if np.any(arr < 0):
+                    raise ValueError("array values must be non-negative.")
+                return arr
             else:
                 raise ValueError("Input must have exactly 6 values for dimensions.")
         else:

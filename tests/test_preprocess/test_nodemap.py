@@ -62,13 +62,13 @@ class TestNodeMap:
     @pytest.mark.parametrize(
     "padding, expected_shape",
     [
-        (None, (5, 5, 5)),             # No padding
-        (0, (5, 5, 5)),                # 0-padding everywhere
+        (None, (5, 5, 5)),             
+        (0, (5, 5, 5)),                
         ([0, 0, 0, 0, 0, 0], (5, 5, 5)),
-        (1, (7, 7, 7)),                # pad 1 on each side, all axes: original + 2*1 each
-        ([1, 2, 0, 0, 0, 0], (8, 5, 5)),  # different min/max on x
-        ([1, 2, 3, 4, 0, 0], (8, 12, 5)), # nonzero on y
-        ([0, 0, 0, 0, 5, 6], (5, 5, 16)), # only z
+        (1, (7, 7, 7)),                
+        ([1, 2, 0, 0, 0, 0], (8, 5, 5)),  
+        ([1, 2, 3, 4, 0, 0], (8, 12, 5)), 
+        ([0, 0, 0, 0, 5, 6], (5, 5, 16)), 
     ],           
     )
     def test_add_padding_works_for_all_valid_paddings(self, 
@@ -84,7 +84,37 @@ class TestNodeMap:
         nm.add_padding()
         assert nm.domain.shape == expected_shape, "paddings were not applied correctly" 
 
-    
+
+    @pytest.mark.parametrize(
+        "bad_padding",
+        [
+            [1, 2, 3],            
+            [1, 2, 3, 4, 5, 6, 7],  
+            "abc",                
+            -1,                   
+            [0, 1, -2, 0, 0, 0],  
+        ],
+    )
+    def test_add_padding_raises_value_error_for_invalid_paddings(self, temp_dir, bad_padding):
+        """
+        Test ValueError or failure for invalid paddings. Guards already added in add_padding
+        """
+        domain = np.ones((4, 4, 4), dtype=int)
+        if isinstance(bad_padding, (int, list)):
+            if isinstance(bad_padding, int) and bad_padding < 0:
+                # Negative integer should not be accepted for padding
+                with pytest.raises(ValueError):
+                    _ = ConcreteNodeMap(domain=domain, file_stem="bad", save_path=temp_dir, padding=bad_padding)
+            elif isinstance(bad_padding, list) and any(n < 0 for n in bad_padding):
+                with pytest.raises(ValueError):
+                    _ = ConcreteNodeMap(domain=domain, file_stem="bad", save_path=temp_dir, padding=bad_padding)
+            else:
+                with pytest.raises(ValueError):
+                    _ = ConcreteNodeMap(domain=domain, file_stem="bad", save_path=temp_dir, padding=bad_padding)
+        else:
+            with pytest.raises(ValueError):
+                _ = ConcreteNodeMap(domain=domain, file_stem="bad", save_path=temp_dir, padding=bad_padding)
+
 
 
 
