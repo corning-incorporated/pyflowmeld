@@ -294,7 +294,7 @@ class NodeMap(metaclass = ABCMeta):
         - Adding padding (x, y, z) to the simulation domain.
         - Creating sidewalls around the domain.
         - Supporting bounce-back conditions using circular shifts.
-        - Adding tanks, release boundaries, and centralized objects (e.g., droplets, bridges).
+        - release boundaries, and centralized objects (e.g., droplets, bridges).
         - Exporting simulation domains to `.dat`, `.csv`, and `.vtk` formats.
 
     Attributes:
@@ -302,8 +302,6 @@ class NodeMap(metaclass = ABCMeta):
         padding (numpy.array): Amount of padding added to each side of the domain ([x_min, x_max, y_min, y_max, z_min, z_max]).
         side_walls (numpy.array): Size of sidewalls added to the domain (default is zeros for no walls).
         geometry_side_walls (numpy.array): Sidewalls applied selectively to geometries.
-        tank (bool): Boolean flag indicating if a cylindrical tank shape is added to the domain.
-        tank_direction (str): Direction of the tank base ('x', 'y', or 'z').
         save_path (str): Directory to save the exported files.
         file_name (str): Stem name used for output files.
         fluid_nodes, boundary_nodes, solid_nodes (tuple): Node indices for fluid, boundary, and solid nodes.
@@ -312,7 +310,6 @@ class NodeMap(metaclass = ABCMeta):
     Methods:
         add_padding(): Adds padding to the domain (in x, y, z directions).
         add_sidewalls(side_wall_key): Adds sidewalls to the domain based on `side_walls` or `geometry_side_walls`.
-        add_tank(): Adds a cylindrical tank object to the domain, with caps if specified.
         add_bounceback(): Updates the domain with bounce-back boundary conditions using the predefined method.
         add_phases(): Abstract method for adding simulation phases, implemented in subclasses.
         to_dat(), to_csv(), to_vtk(): Methods for exporting the nodemap domain in various formats.
@@ -321,12 +318,9 @@ class NodeMap(metaclass = ABCMeta):
 
     Examples:
         >>> domain = np.zeros((10, 10, 10))
-        >>> nodemap = NodeMap(domain=domain, padding=[1, 1, 1, 1, 1, 1], tank=True, tank_direction="z", save_path="./")
-        >>> nodemap.add_padding()
-        >>> nodemap.add_tank()
-        >>> nodemap.to_dat()
+        >>> nodemap = NodeMap(domain=domain, padding=[1, 1, 1, 1, 1, 1], save_path="./")
 
-        This creates a domain with padded boundaries and adds a cylindrical tank in the z-direction. 
+        This creates a domain with padded boundaries. 
         The nodemap is then exported to a `.dat` file in the specified directory.
 
     Notes:
@@ -342,8 +336,6 @@ class NodeMap(metaclass = ABCMeta):
         padding: Optional[Union[int, List[int]]] = None, 
         side_walls: Optional[Union[int, List[int]]] = None, 
         geometry_side_walls: Optional[Union[int, List[int]]] = None, 
-        tank: bool = False, 
-        tank_direction: str = 'y', 
         **kw: Any
     ) -> None:
         """
@@ -358,13 +350,10 @@ class NodeMap(metaclass = ABCMeta):
             side_walls (Optional[Union[int, List[int]]]): Thickness of sidewalls for each dimension
                 [x_min, x_max, y_min, y_max, z_min, z_max]. Default is zeros (no walls).
             geometry_side_walls (Optional[Union[int, List[int]]]): Geometry-specific sidewalls (default is zeros).
-            tank (bool): Whether to add a cylindrical tank geometry (default is False).
-            tank_direction (str): Direction of tank geometry ('x', 'y', or 'z'). Default is 'y'.
             **kw (Any): Additional arguments for subclass-specific configurations.
 
         Raises:
             ValueError: If `domain` is not a valid 3D numpy array.
-            ValueError: If `tank_direction` is invalid.
         """
         
         # Validate domain input
@@ -382,19 +371,13 @@ class NodeMap(metaclass = ABCMeta):
         self.side_walls = self._normalize_input(side_walls, default=0)
         self.geometry_side_walls = self._normalize_input(geometry_side_walls, default=0)
         
-        # Initialize tank parameters
-        self.tank = tank
-        if tank_direction not in ['x', 'y', 'z']:
-            raise ValueError("Invalid tank_direction. Choose from 'x', 'y', or 'z'.")
-        self.tank_direction = tank_direction
-        
         # Initialize additional attributes
         self.fluid_nodes: Optional[Tuple[np.ndarray, ...]] = None
         self.boundary_nodes: Optional[Tuple[np.ndarray, ...]] = None
         self.solid_nodes: Optional[Tuple[np.ndarray, ...]] = None
-        self.void_fraction: Optional[float] = None
-        self.domain_volume: Optional[float] = None
         self.total_number_fluid: Optional[int] = None
+        self.domain_volume = np.prod(self.domain_shape)
+        self.void_fraction = 1 - np.sum(self.domain)/self.domain_volume
 
         self.which_sidewall: List[str] = []
         if not all(elem == 0 for elem in self.geometry_side_walls):
@@ -404,7 +387,7 @@ class NodeMap(metaclass = ABCMeta):
 
         # Save original domain (no padding)
         np.savetxt(self.save_path / f'orig_domain_no_pad_{file_stem}.dat', self.domain.flatten(), fmt='%d')
-        self._set_resolution_and_void_fraction()
+        
 
     @staticmethod
     def _normalize_input(value, default=0):
@@ -429,28 +412,12 @@ class NodeMap(metaclass = ABCMeta):
                 raise ValueError("Input must have exactly 6 values for dimensions.")
         else:
             raise ValueError("Invalid input type. Must be None, int, or list/tuple.")
-
-    def _set_resolution_and_void_fraction(self):
-        res_x, res_y, res_z = self.domain_shape
-        self.domain_volume = res_x*res_y*res_z 
-        self.void_fraction = 1 - np.sum(self.domain)/self.domain_volume 
-    
-    def __setattr__(self, name, value):
-        if name in ['padding', 'side_walls', 'distance_from_edge', 'geometry_side_walls']:
-            if value is None:
-                super(NodeMap, self).__setattr__(name, np.array([0]*6))
-            elif isinstance(value, int):
-                super(NodeMap, self).__setattr__(name, np.array([value]*6))
-            elif isinstance(value, (tuple, list)):
-                super(NodeMap, self).__setattr__(name, np.array(value))
-        else:
-            super(NodeMap, self).__setattr__(name, value)
-    
+        
     @property 
     def domain_shape(self):
         return self.domain.shape 
 
-    def _add_padding(self, axis: int, padding_indices: Tuple[int, int]) -> None:
+    def _append_padding(self, axis: int, padding_indices: Tuple[int, int]) -> None:
         """
         Adds padding along the specified axis of the domain.
 
@@ -474,11 +441,11 @@ class NodeMap(metaclass = ABCMeta):
         Adds padding to the domain along all axes (x, y, z) based on `self.padding`.
         """
         if self.padding[0] != 0 or self.padding[1] != 0:
-            self._add_padding(axis=0, padding_indices=(self.padding[0], self.padding[1]))
+            self._append_padding(axis=0, padding_indices=(self.padding[0], self.padding[1]))
         if self.padding[2] != 0 or self.padding[3] != 0:
-            self._add_padding(axis=1, padding_indices=(self.padding[2], self.padding[3]))
+            self._append_padding(axis=1, padding_indices=(self.padding[2], self.padding[3]))
         if self.padding[4] != 0 or self.padding[5] != 0:
-            self._add_padding(axis=2, padding_indices=(self.padding[4], self.padding[5]))
+            self._append_padding(axis=2, padding_indices=(self.padding[4], self.padding[5]))
     
     def set_bounceback(self, bounce_method: Literal["circ", "edt"] = "circ"):
         """
@@ -567,61 +534,6 @@ class NodeMap(metaclass = ABCMeta):
         if side_walls[5] != 0:
             self.domain[:,:,-side_walls[5]:] = 1
 
-    def add_tank(self):
-        """
-        Adds a cylindrical tank shape to the domain with optional caps based on the specified tank direction.
-
-        Modifies:
-            - self.domain: Adds boundary nodes (`value = 1`) to represent the tank walls and caps.
-
-        Tank Shape:
-            - A cylindrical tank is defined using the tank radius calculated from half the smaller dimension
-                perpendicular to the specified `tank_direction`.
-            - Nodes outside this cylindrical shape are marked as boundaries (`value = 1`).
-            - Caps (top and bottom surfaces of the cylinder) are added if `tank_direction` is 'x', 'y', or 'z'.
-
-        Attributes Used:
-            - tank_direction (str): Direction of the tank ('x', 'y', or 'z').
-            - size_x, size_y, size_z (int): Dimensions of the domain.
-
-        Behavior:
-            - If the tank direction is 'x', the tank is aligned along the x-axis, with circular cross-sections 
-                in the y-z plane and caps at the front and back.
-            - If the tank direction is 'y', the tank is aligned along the y-axis, with circular cross-sections 
-                in the x-z plane and caps at the top and bottom.
-            - If the tank direction is 'z', the tank is aligned along the z-axis, with circular cross-sections 
-                in the x-y plane and caps at the front and back.
-
-        Raises:
-            ValueError: If the `tank_direction` is invalid.
-
-        Example:
-            >>> domain = np.zeros((100, 100, 100))  # A 10x10x10 empty domain
-            >>> nodemap = NodeMap(domain=domain, tank=True, tank_direction="z")
-            >>> nodemap.add_tank()
-            >>> print(np.sum(nodemap.domain == 1))  # Prints the count of boundary tank nodes
-        """
-        tank_radius = {'y': min(self.size_x//2, self.size_z//2) - 2, 
-                        'x': min(self.size_y//2, self.size_z//2) - 2, 
-                            'z': min(self.size_x//2, self.size_y//2) - 2}[self.tank_direction]
-        cu, cv = {'y': (self.size_x/2, self.size_z/2), 'x': (self.size_y/2, self.size_z/2), 
-                                'z': (self.size_x/2, self.size_y/2)}[self.tank_direction]
-        uu, vv = {'y': (self.xx, self.zz), 'x': (self.yy, self.zz), 'z': (self.xx, self.yy)}[self.tank_direction]
-        tank_index = np.where((uu - cu)**2 + (vv - cv)**2 >= tank_radius**2)
-        self.domain[tank_index] = 1 
-        
-        # add caps
-        if self.tank_direction == 'x':
-            self.domain[0,:,:] = 1 
-            self.domain[-1,:,:] = 1 
-
-        elif self.tank_direction == 'y':
-            self.domain[:,0,:] = 1 
-            self.domain[:,-1,:] = 1 
-        
-        elif self.tank_direction == 'z':
-            self.domain[:,:,0] = 1 
-            self.domain[:,:,-1] = 1 
 
     def to_dat(self):
         file_name = path.join(self.save_path, self.file_name + '.dat')
@@ -766,7 +678,7 @@ class NodeMap(metaclass = ABCMeta):
 
         Process Flow:
             1. Adds geometry-specific and domain-wide sidewalls to the domain based on configuration.
-            2. Adds padding, tank geometry, and bounce-back conditions based on input settings.
+            2. Adds padding and bounce-back conditions based on input settings.
             3. Adds simulation phases, such as fluid and solid assignment, by interacting with subclasses.
             4. Exports the processed domain in `.dat`, `.csv`, and `.vtk` formats.
             5. If `slice_direction` is specified, exports slices of the domain to separate `.csv` files.
@@ -804,8 +716,6 @@ class NodeMap(metaclass = ABCMeta):
             self.add_sidewalls("domain")
 
         self._generate_coordinate_arrays()
-        if self.tank:
-            self.add_tank()
         self.set_bounceback(bounce_method = bounce_method)
         self.add_phases()
         self.add_bounceback()
@@ -1003,7 +913,7 @@ class MultiPhaseNodeMap(NodeMap):
 
     The class supports additional fluid phases within the simulation domain, including methods 
     to add droplets, bridges, or initiate fluid invasion from boundaries. The generated nodemap 
-    also accommodates certain geometrical constraints like tanks or sidewalls.
+    also accommodates certain geometrical constraints like sidewalls.
 
     Attributes:
         set_phases (dict): Dictionary defining the method used for phase addition:
@@ -1012,7 +922,6 @@ class MultiPhaseNodeMap(NodeMap):
             - "invasion": Fluid phase initiates simultaneously from multiple boundaries.
             - "droplet": Initializes spherical fluid droplets in the domain.
             - "bridge": Adds bridge-shaped structures within the domain.
-        tank_shape (str): Type of tank geometry ("square" or "cylinder").
         domain (np.ndarray): Simulation domain, a 3D array.
         fluid_nodes (Optional[Tuple[np.ndarray, ...]]): Indices of fluid (empty) nodes.
 
@@ -1065,8 +974,6 @@ class MultiPhaseNodeMap(NodeMap):
         save_path: Optional[Union[str, Path]] = None, 
         side_walls: Optional[Union[int, List[int]]] = None,  
         geometry_side_walls: Optional[Union[int, List[int]]] = None, 
-        tank: bool = False, 
-        tank_direction: Optional[str] = None,
         padding: Optional[Union[int, List[int]]] = None, 
         set_phases: Optional[dict] = {'method': 'drainage'}
     ) -> None:
@@ -1079,8 +986,6 @@ class MultiPhaseNodeMap(NodeMap):
             save_path (Optional[Union[str, Path]]): Directory path for saving exported files.
             side_walls (Optional[Union[int, List[int]]]): Thickness of side walls around the domain.
             geometry_side_walls (Optional[Union[int, List[int]]]): Geometry-specific side walls.
-            tank (bool): Boolean flag indicating if a tank geometry is initialized.
-            tank_direction (Optional[str]): Direction of the tank geometry ('x', 'y', or 'z').
             padding (Optional[Union[int, List[int]]]): Padding values for all six axes.
             set_phases (Optional[dict]): Parameters for fluid phase addition within the domain:
                 - "method" (str): Specifies the method of phase addition.
@@ -1088,7 +993,6 @@ class MultiPhaseNodeMap(NodeMap):
 
         Raises:
             ValueError: If `set_phases["method"]` is unsupported.
-            ValueError: If `tank_direction` is invalid when `tank=True`.
             Exception: If domain input is invalid (not a 3D numpy array).
         """
         super().__init__(
@@ -1098,8 +1002,6 @@ class MultiPhaseNodeMap(NodeMap):
             padding=padding, 
             side_walls=side_walls, 
             geometry_side_walls=geometry_side_walls, 
-            tank=tank, 
-            tank_direction=tank_direction
         )
         
         self.set_phases = set_phases

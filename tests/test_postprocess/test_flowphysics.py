@@ -31,13 +31,6 @@ from pyflowmeld.postprocess.flowphysics import PhaseFlow
 
 # Fixtures
 @pytest.fixture
-def temp_dir():
-    """Create a temporary directory for test files."""
-    temp_path = tempfile.mkdtemp()
-    yield temp_path
-    shutil.rmtree(temp_path)
-
-@pytest.fixture
 def mock_domain_size():
     """Standard domain size for testing."""
     return (40, 40, 40)
