@@ -290,6 +290,8 @@ class BounceBackGen:
 class NodeMap(metaclass = ABCMeta):
     """
     Base class for generating nodemaps for simulation domains in fluid dynamics and multiphase simulations.
+    Domain and Geometry are normally different but can also be the same. 
+    Domain is a result of adding padding to the geometry.
     This class supports:
         - Adding padding (x, y, z) to the simulation domain.
         - Creating sidewalls around the domain.
@@ -349,7 +351,8 @@ class NodeMap(metaclass = ABCMeta):
                 [x_min, x_max, y_min, y_max, z_min, z_max]. Default is zeros (no padding).
             side_walls (Optional[Union[int, List[int]]]): Thickness of sidewalls for each dimension
                 [x_min, x_max, y_min, y_max, z_min, z_max]. Default is zeros (no walls).
-            geometry_side_walls (Optional[Union[int, List[int]]]): Geometry-specific sidewalls (default is zeros).
+            geometry_side_walls (Optional[Union[int, List[int]]]): encloses the actual geometry with side walls. 
+                good to apply bounceback boundary condition on the geometry. 
             **kw (Any): Additional arguments for subclass-specific configurations.
 
         Raises:
