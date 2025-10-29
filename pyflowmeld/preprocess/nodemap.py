@@ -362,11 +362,11 @@ class NodeMap(metaclass = ABCMeta):
         # Validate domain input
         if domain is None or not isinstance(domain, np.ndarray):
             raise ValueError("A valid 3D numpy array for domain must be provided.")
-        self.domain = domain
+        self.domain = np.copy(domain)
 
         # Initialize file info
         self.file_stem = file_stem
-        self.save_path = Path(save_path) if save_path else Path(".")  # Defaults to the current directory if save_path is None
+        self.save_path = Path(save_path) if save_path is not None else Path(".")  # Defaults to the current directory if save_path is None
         self.file_name = f'node_map_{file_stem}' if file_stem else 'node_map'
 
         # Initialize padding and sidewall parameters
@@ -379,8 +379,6 @@ class NodeMap(metaclass = ABCMeta):
         self.boundary_nodes: Optional[Tuple[np.ndarray, ...]] = None
         self.solid_nodes: Optional[Tuple[np.ndarray, ...]] = None
         self.total_number_fluid: Optional[int] = None
-        self.domain_volume = np.prod(self.domain_shape)
-        self.void_fraction = 1 - np.sum(self.domain)/self.domain_volume
 
         self.which_sidewall: List[str] = []
         if not all(elem == 0 for elem in self.geometry_side_walls):
@@ -390,7 +388,7 @@ class NodeMap(metaclass = ABCMeta):
 
         # Save original domain (no padding)
         np.savetxt(self.save_path / f'orig_domain_no_pad_{file_stem}.dat', self.domain.flatten(), fmt='%d')
-        
+
 
     @staticmethod
     def _normalize_input(value, default=0):
@@ -418,10 +416,22 @@ class NodeMap(metaclass = ABCMeta):
                 raise ValueError("Input must have exactly 6 values for dimensions.")
         else:
             raise ValueError("Invalid input type. Must be None, int, or list/tuple.")
-        
+
+
+    def _save_original_domain(self) -> None:
+        np.savetxt(self.save_path / f'orig_domain_no_pad_{self.file_stem}.dat', self.domain.flatten(), fmt='%d')
+
     @property 
     def domain_shape(self):
-        return self.domain.shape 
+        return self.domain.shape
+    
+    @property
+    def domain_volume(self):
+        return np.prod(self.domain.shape)
+
+    @property
+    def void_fraction(self):
+        return 1 - np.sum(self.domain) / self.domain_volume
 
     def _append_padding(self, axis: int, padding_indices: Tuple[int, int]) -> None:
         """
@@ -654,7 +664,7 @@ class NodeMap(metaclass = ABCMeta):
     def _generate_saturation_info(self):
         self.total_number_fluid = np.sum(np.where(self.domain == 3, 1, 0)) 
 
-    def add_file_info(self):
+    def _add_file_info(self):
         file_info = path.join(self.save_path, self.file_name + '_info.txt')
         with open(file_info, 'w') as f:
             f.write(f'domain size: {self.domain.shape} \n')
@@ -730,7 +740,8 @@ class NodeMap(metaclass = ABCMeta):
         self.to_csv(separate = separate, multiphase = multiphase)
         if vtk:
             self.to_vtk()
-        self.add_file_info()
+        self._add_file_info()
+        self._save_original_domain()
         if slice_direction is not None:
             self.to_slice_csv(slice_direction)
 
