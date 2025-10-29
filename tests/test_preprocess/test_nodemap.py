@@ -54,9 +54,6 @@ class TestNodeMap:
         assert nm.domain_shape ==  shape
         assert np.isclose(nm.void_fraction, 1 - np.sum(domain)/np.prod(shape))
 
-        expected_file = Path(temp_dir) / "orig_domain_no_pad_testcase.dat"
-        assert expected_file.exists()
-        assert nm.which_sidewall == []
     
     #-- testing add padding --#
     @pytest.mark.parametrize(
@@ -116,5 +113,27 @@ class TestNodeMap:
                 _ = ConcreteNodeMap(domain=domain, file_stem="bad", save_path=temp_dir, padding=bad_padding)
 
 
+    def test_call_basic_function(self, temp_dir):
+        """
+        Tests the basic functionality of the __call__ and sequence of actions
+        """
+        shape = (50,50,50)
+        domain = np.zeros(shape, dtype = int)
+        cube_start, cube_end = 20,30
+        domain[cube_start:cube_end, cube_start:cube_end, cube_start:cube_end] = 1
+        nm = ConcreteNodeMap(domain=domain, file_stem="calltest", save_path=temp_dir)
+        nm(slice_direction="z", bounce_method="circ", separate=True, vtk=False, multiphase=False)
+        exported_files = [
+        "node_map_calltest.dat",
+        "node_map_calltest_info.txt",
+        "orig_domain_no_pad_calltest.dat",
+        "node_map_calltest_inert_fluid.csv",
+        "node_map_calltest_solids.csv",
+        "node_map_calltest_boundary.csv",]
+        for fname in exported_files:
+            assert (Path(temp_dir) / fname).exists(), f"Missing output file: {fname}"
 
+        # Domain should contain both fluid and solid (not all zeros or all ones)
+        vals, counts = np.unique(nm.domain, return_counts=True)
+        assert 0 in vals and 1 in vals, "Domain should contain both fluid and solid nodes after processing"
 

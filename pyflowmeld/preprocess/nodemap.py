@@ -365,9 +365,9 @@ class NodeMap(metaclass = ABCMeta):
         self.domain = np.copy(domain)
 
         # Initialize file info
-        self.file_stem = file_stem
+        self.file_stem: str = file_stem if file_stem is not None else "node_map"
         self.save_path = Path(save_path) if save_path is not None else Path(".")  # Defaults to the current directory if save_path is None
-        self.file_name = f'node_map_{file_stem}' if file_stem else 'node_map'
+        self.file_name = f'node_map_{self.file_stem}' 
 
         # Initialize padding and sidewall parameters
         self.padding = self._normalize_input(padding, default=0)
@@ -378,18 +378,8 @@ class NodeMap(metaclass = ABCMeta):
         self.fluid_nodes: Optional[Tuple[np.ndarray, ...]] = None
         self.boundary_nodes: Optional[Tuple[np.ndarray, ...]] = None
         self.solid_nodes: Optional[Tuple[np.ndarray, ...]] = None
-        self.total_number_fluid: Optional[int] = None
 
-        self.which_sidewall: List[str] = []
-        if not all(elem == 0 for elem in self.geometry_side_walls):
-            self.which_sidewall.append("geometry")
-        if not all(elem == 0 for elem in self.side_walls):
-            self.which_sidewall.append("domain")
-
-        # Save original domain (no padding)
-        np.savetxt(self.save_path / f'orig_domain_no_pad_{file_stem}.dat', self.domain.flatten(), fmt='%d')
-
-
+       
     @staticmethod
     def _normalize_input(value, default=0):
         """
@@ -433,6 +423,10 @@ class NodeMap(metaclass = ABCMeta):
     def void_fraction(self):
         return 1 - np.sum(self.domain) / self.domain_volume
 
+    @property
+    def total_number_fluid_nodes(self):
+        return np.sum(np.where(self.domain == 3, 1, 0))
+
     def _append_padding(self, axis: int, padding_indices: Tuple[int, int]) -> None:
         """
         Adds padding along the specified axis of the domain.
@@ -451,7 +445,6 @@ class NodeMap(metaclass = ABCMeta):
 
         self.domain = np.concatenate((pad_one, self.domain, pad_two), axis=axis)
 
-
     def add_padding(self) -> None:
         """
         Adds padding to the domain along all axes (x, y, z) based on `self.padding`.
@@ -463,7 +456,7 @@ class NodeMap(metaclass = ABCMeta):
         if self.padding[4] != 0 or self.padding[5] != 0:
             self._append_padding(axis=2, padding_indices=(self.padding[4], self.padding[5]))
     
-    def set_bounceback(self, bounce_method: Literal["circ", "edt"] = "circ"):
+    def _set_bounceback(self, bounce_method: Literal["circ", "edt"] = "circ"):
         """
         Identifies bounce-back boundary nodes in the domain and solid nodes based on the specified method.
 
@@ -502,11 +495,11 @@ class NodeMap(metaclass = ABCMeta):
     def add_phases(self):
         ... 
 
-    def add_bounceback(self):
+    def _add_bounceback(self):
         self.domain[self.boundary_nodes] = 1
         self.domain[self.solid_nodes] = 2
     
-    def add_sidewalls(self, side_wall_key: Literal["geometry", "domain"] = "domain"):
+    def _add_sidewalls(self, side_wall_key: Literal["geometry", "domain"] = "domain"):
         """
         Adds sidewalls to the domain based on the specified key.
 
@@ -616,7 +609,7 @@ class NodeMap(metaclass = ABCMeta):
     
     # slice output of data
     def get_slice(self, direction: Literal['x', 'y', 'z'],
-            coord: int, thickness: int):
+            coord: int):
         """
         Returns a tuple of slices to extract a region from the domain based on a given direction and coordinate.
         Utilizes the `get_slice` function from `tools.py`.
@@ -624,7 +617,6 @@ class NodeMap(metaclass = ABCMeta):
         Args:
             direction (Literal['x', 'y', 'z']): Direction of the slice ('x', 'y', or 'z').
             coordinate (int): Starting coordinate along the specified direction.
-            thickness (int): Thickness of the slice along the specified direction (default is 1).
 
         Returns:
             Tuple[slice, slice, slice]: A tuple representing slices that can be used to index the domain.
@@ -638,12 +630,12 @@ class NodeMap(metaclass = ABCMeta):
             >>> print(result)  # Output: (slice(5, 7), slice(0, 10), slice(0, 10))
         """
         resolution = (self.size_x, self.size_y, self.size_z)  # Extract domain resolution
-        return tools.get_slice(direction, coord, resolution)
+        return tools.get_slice(resolution, direction, coord)
 
     def to_slice_csv(self, slice_direction: Literal['x', 'y', 'z']):
-        res = {'x': self.size_x, 'y': self.size_y, 'z': self.size_z}[slice]
-        slicer = partial(self._get_slice, direction = slice_direction)
-        slice_dir = path.join(self.save_path, slice + '_slices')
+        res = {'x': self.size_x, 'y': self.size_y, 'z': self.size_z}[slice_direction]
+        slicer = lambda coord: self.get_slice(slice_direction, coord)
+        slice_dir = path.join(self.save_path, slice_direction + '_slices')
         if not path.exists(slice_dir):
             makedirs(slice_dir)
 
@@ -652,17 +644,27 @@ class NodeMap(metaclass = ABCMeta):
             slice_df = pd.DataFrame(np.c_[self.xx[s_slice].flatten()[:, np.newaxis], 
                 self.xx[s_slice].flatten()[:, np.newaxis],
                     self.zz[s_slice].flatten()[:, np.newaxis], 
-                        self.domain.flatten()[:, np.newaxis]], columns = ['x', 'y', 'z', 'domain'])
+                        self.domain[s_slice].flatten()[:, np.newaxis]], columns = ['x', 'y', 'z', 'domain'])
             slice_df.to_csv(path.join(slice_dir, 'slice_' + str(s) + '.csv'), sep = ',', 
                             header = True, index = False, float_format = '%.5f')
     
-    def _generate_coordinate_arrays(self):
+    #----- call and call helpers ------#
+    def _setup_domain_solid_boundaries(self) -> None:
+        """ adds geometry enclosing walls and domain walls 
+        Note that padding must be added to after adding geometry walls
+        so the sequence is important 
+        """
+        if not np.all(self.geometry_side_walls == 0):
+            self.add_sidewalls("geometry")
+        self.add_padding()
+        if not np.all(self.side_walls == 0):
+            self.add_sidewalls("domain")
+
+    def _generate_coordinate_arrays(self) -> None:
         self.size_x, self.size_y, self.size_z = self.domain_shape 
         self.xx, self.yy, self.zz = np.meshgrid(np.arange(0, self.size_x), np.arange(0, self.size_y), 
                             np.arange(0, self.size_z), indexing = 'ij') 
 
-    def _generate_saturation_info(self):
-        self.total_number_fluid = np.sum(np.where(self.domain == 3, 1, 0)) 
 
     def _add_file_info(self):
         file_info = path.join(self.save_path, self.file_name + '_info.txt')
@@ -725,17 +727,12 @@ class NodeMap(metaclass = ABCMeta):
             >>> nodemap(slice_direction=None, vtk=False)  # Creates nodemap but skips slicing and `.vtk` export.
         """
         # note: add_sidewalls and add_edges should be added before set_bounceback 
-        if "geometry" in self.which_sidewall:
-            self.add_sidewalls("geometry")
-        self.add_padding()
-        if "domain" in self.which_sidewall:
-            self.add_sidewalls("domain")
-
+    
+        self._setup_domain_solid_boundaries()
         self._generate_coordinate_arrays()
-        self.set_bounceback(bounce_method = bounce_method)
+        self._set_bounceback(bounce_method = bounce_method)
         self.add_phases()
-        self.add_bounceback()
-        self._generate_saturation_info()
+        self._add_bounceback()
         self.to_dat()
         self.to_csv(separate = separate, multiphase = multiphase)
         if vtk:
@@ -1357,7 +1354,7 @@ class DryingNodeMap(NodeMap):
             f.write(f"Padding Values (x_min, x_max, y_min, y_max, z_min, z_max): {', '.join(map(str, self.padding))}\n")
             f.write(f"Side Wall Thickness (x_min, x_max, y_min, y_max, z_min, z_max): {', '.join(map(str, self.side_walls))}\n")
             f.write(f'void fraction is {self.void_fraction}')
-            f.write(f'total number of fluid is {self.total_number_fluid}')
+            f.write(f'total number of fluid nodes is {self.total_number_fluid_nodes}')
     
     def __call__(
         self, 

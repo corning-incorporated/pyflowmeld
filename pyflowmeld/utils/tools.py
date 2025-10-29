@@ -63,6 +63,7 @@ def get_slice(
     print(result)  # Output: (slice(10, 11), slice(0, 100), slice(0, 100))
     ```
     """
+
     if direction not in {'x', 'y', 'z'}:
         raise ValueError(f"Invalid direction '{direction}'. Must be one of 'x', 'y', 'z'.")
     if coordinate < 0 or coordinate >= domain_size['xyz'.index(direction)]:
