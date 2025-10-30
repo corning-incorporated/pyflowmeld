@@ -998,6 +998,19 @@ class DropletSpread(NodeMap):
 #-------------------------------#
 # Nodemap Generation for drying #
 #-------------------------------#
+@dataclass 
+class ZoneConfig:
+    """ 
+    configuration for liquid release zone
+    """
+    x_min: int = 0
+    x_max: int = 0
+    y_min: int = 0
+    y_max: int = 0
+    z_min: int = 0
+    z_max: int = 0 
+
+#--------------------------#
 class DryingNodeMap(NodeMap):
     """
     A specialized class for generating LBM-compatible node maps for drying simulations. 
@@ -1059,10 +1072,9 @@ class DryingNodeMap(NodeMap):
         file_stem: Optional[str] = None, 
         save_path: Optional[Union[str, Path]] = None,
         padding: Optional[Union[int, List[int]]] = None, 
-        distance_from_edge: Optional[Union[int, List[int]]] = None, 
         side_walls: Optional[Union[int, List[int]]] = None, 
         geometry_side_walls: Optional[Union[int, List[int]]] = None, 
-        phase_release_boundary: Optional[List[int]] = None
+        gap_from_edge: Optional[ZoneConfig] = None
     ) -> None:
         """
         Initializes the DryingNodeMap class.
@@ -1073,12 +1085,9 @@ class DryingNodeMap(NodeMap):
             save_path (Optional[Union[str, Path]]): Directory for saving the output files. Defaults to the current directory.
             padding (Optional[Union[int, List[int]]]): Padding values for all six dimensions [x_min, x_max, y_min, y_max, z_min, z_max].
                                                        Defaults to None (no padding).
-            distance_from_edge (Optional[Union[int, List[int]]]): Distance from domain edges to restrict fluid phase addition.
             side_walls (Optional[Union[int, List[int]]]): Thickness of side walls around six dimensions.
-            geometry_side_walls (Optional[Union[int, List[int]]]): Selective sidewalls for specific regions/geometries.
-            phase_release_boundary (Optional[List[int]]): Defines boundaries for releasing fluid phases 
-                                                          (expected list format [x_min, x_max, y_min, y_max, z_min, z_max]).
-
+            geometry_side_walls (Optional[Union[int, List[int]]]): Sidewalls that wrap the geomrty itself.
+            gap_from_edge (Optional[LiquidReleaseZone]), gap between the liquid and edges of the domain 
         Raises:
             ValueError: If `domain` is invalid (not a 3D numpy array).
             ValueError: If phase_release_boundary is not a list of six elements.
@@ -1092,119 +1101,55 @@ class DryingNodeMap(NodeMap):
             geometry_side_walls=geometry_side_walls
         )
 
-        self.distance_from_edge = self._normalize_input(distance_from_edge, default=0)
+        self.gap_from_edge = ZoneConfig(
+            x_min = 2,
+            y_min = 2,
+            z_min = 2,
+            x_max = 2, 
+            y_max = 2,
+            z_max = 2) if gap_from_edge is None else gap_from_edge  
+    
+    @property
+    def domain_boundaries(self) -> ZoneConfig:
+        x_min = self.padding[0] + self.side_walls[0]
+        y_min = self.padding[2] + self.side_walls[2]
+        z_min = self.padding[4] + self.side_walls[4]
 
-        if phase_release_boundary:
-            if isinstance(phase_release_boundary, list) and len(phase_release_boundary) == 6:
-                self.phase_release_boundary = phase_release_boundary
-            else:
-                raise ValueError(
-                    "`phase_release_boundary` must be a list of six integers "
-                    "specifying bounds for fluid phase release."
-                )
-        else:
-            self.phase_release_boundary = [0] * 6
+        x_max = self.domain_shape[0] - (self.padding[1] + self.side_walls[1])
+        y_max = self.domain_shape[1] - (self.padding[3] + self.side_walls[3])
+        z_max = self.domain_shape[2] - (self.padding[5] + self.side_walls[5])
 
-        self._set_boundaries()
+        return ZoneConfig(
+        x_min = x_min,
+        y_min = y_min,
+        z_min = z_min,
+        x_max = x_max, 
+        y_max = y_max, 
+        z_max = z_max 
+        )
 
-    def _set_boundaries(self) -> None:
+    def _add_liquid(self):
         """
-        Sets domain boundaries dynamically based on padding and side wall parameters.
-        """
-        self.min_x = self.padding[0] + self.side_walls[0]
-        self.min_y = self.padding[2] + self.side_walls[2]
-        self.min_z = self.padding[4] + self.side_walls[4]
-
-        self.max_x = self.domain_shape[0] - (self.padding[1] + self.side_walls[1])
-        self.max_y = self.domain_shape[1] - (self.padding[3] + self.side_walls[3])
-        self.max_z = self.domain_shape[2] - (self.padding[5] + self.side_walls[5])
-
-    def _set_phase_release_standard(self):
-        """
-        Adds fluid phase to the domain, excluding areas defined by `distance_from_edge`.
+        Adds fluid phase to the domain, excluding areas defined by liquid_zone
         Modifies the domain by marking nodes within the restricted boundaries as fluid (value = 3).
         """
-        min_x = self.min_x + self.distance_from_edge[0]
-        max_x = self.max_x - self.distance_from_edge[1]
+        boundaries = self.domain_boundaries 
+        min_x = boundaries.x_min + self.gap_from_edge.x_min 
+        max_x = boundaries.x_max - self.gap_from_edge.x_max 
 
-        min_y = self.min_y + self.distance_from_edge[2]
-        max_y = self.max_y - self.distance_from_edge[3]
+        min_y = boundaries.y_min + self.gap_from_edge.y_min 
+        max_y = boundaries.y_max - self.gap_from_edge.y_max 
 
-        min_z = self.min_z + self.distance_from_edge[4]
-        max_z = self.max_z - self.distance_from_edge[5]
+        min_z = boundaries.z_min + self.gap_from_edge.z_min 
+        max_z = boundaries.z_max - self.gap_from_edge.z_max 
 
         self.domain[min_x:max_x, min_y:max_y, min_z:max_z] = 3    
-
-    def _set_phase_release_boundary(self):
-        """
-        Adds fluid phase to the domain based on explicit boundaries defined in `phase_release_boundary`.
-        Updates the domain by marking fluid nodes within these bounds as fluid (value = 3).
-        """
-        max_x = self.phase_release_boundary[0] or self.max_x
-        max_y = self.phase_release_boundary[1] or self.max_y 
-        max_z = self.phase_release_boundary[2] or self.max_z         
-        self.domain[self.min_x:max_x, self.min_y:max_y, self.min_z:max_z] = 3 
   
     def add_phases(self):
         """
-        Adds phases to the simulation domain for drying problems.
-
-        This method dynamically sets the liquid phase (value = 3) in appropriate parts of the domain 
-        based on user-defined configurations. It supports two main strategies:
-            1. `_set_phase_release_standard`: Uses `distance_from_edge` to exclude fluid from the edges.
-            2. `_set_phase_release_boundary`: Explicitly adds fluid phase based on predefined boundary limits.
-
-        Behavior:
-            - When `phase_release_boundary` is None, the method defaults to `_set_phase_release_standard`.
-            - If `phase_release_boundary` is defined, `_set_phase_release_boundary` is used.
-
-        Attributes Modified:
-            - `domain` (numpy.ndarray): Updates the domain to assign fluid nodes as value = 3.
-            - `fluid_nodes` (tuple): Sets indices of void (air) nodes where the domain value is 0.
-
-        Notes:
-            - `add_phases` is specialized for DryingNodeMap but overrides the abstract method 
-            from the base `NodeMap` class in the hierarchy.
-
-        Example Usage:
-            --------------------------------------------
-            Standard Phase Release:
-            --------------------------------------------
-            >>> domain = np.zeros((50, 50, 50))
-            >>> dn_map = DryingNodeMap(
-            ...     domain=domain, 
-            ...     padding=[2, 2, 0, 0, 0, 0], 
-            ...     distance_from_edge=[5, 5, 5, 5, 0, 0]
-            ... )
-            >>> dn_map.add_phases()
-
-            --------------------------------------------
-            Phase Release with Boundary:
-            --------------------------------------------
-            >>> domain = np.zeros((60, 60, 60))
-            >>> dn_map = DryingNodeMap(
-            ...     domain=domain, 
-            ...     phase_release_boundary=[50, 0, 0, 0, 0, 0]
-            ... )
-            >>> dn_map.add_phases()
-            >>> print(dn_map.domain)
-
-            --------------------------------------------
-            Full Padding with Custom Geometry:
-            --------------------------------------------
-            >>> domain = np.ones((40, 40, 40))
-            >>> dn_map = DryingNodeMap(
-            ...     domain=domain, 
-            ...     padding=[4, 4, 4, 4, 4, 4], 
-            ...     side_walls=[1, 1, 1, 1, 1, 1]
-            ... )
-            >>> dn_map.add_phases()
+        add the liquid phase for drying simulations
         """
-        self._set_boundaries()
-        if self.phase_release_boundary is None:
-            self._set_phase_release_standard()
-        else:
-            self._set_phase_release_boundary()
+        self._add_liquid()
         self.fluid_nodes = np.where(self.domain == 0)
     
     def add_file_info(self):
