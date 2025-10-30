@@ -19,17 +19,15 @@
 
 import numpy as np
 import pandas as pd
+from dataclasses import dataclass 
 from typing import Optional, Literal, Union, List, Any, Tuple, Iterable    
 from abc import ABCMeta, abstractmethod
 from scipy.ndimage import distance_transform_edt as edt 
 from pathlib import Path
 from os import path, makedirs, PathLike 
-from .. utils import geometry, benchmarks, tools   
-from functools import partial   
+from .. utils import benchmarks, tools   
 from datetime import datetime 
-import sys 
 import timeit 
-from functools import partial 
 
 class BounceBackGen:
     """
@@ -920,211 +918,86 @@ class NodeMap(metaclass = ABCMeta):
 # ################################################## #
 # generates nodemaps for multiphase flow simulations #
 # ################################################## #
-class MultiPhaseNodeMap(NodeMap):
+#----------------------#
+#  Imbibition nodemap  #
+#----------------------#
+class Imbibition(NodeMap):
     """
-    A class for generating nodemaps for multiphase flow simulations such as drainage, 
-    imbibition, invasion, and related scenarios.
-
-    The class supports additional fluid phases within the simulation domain, including methods 
-    to add droplets, bridges, or initiate fluid invasion from boundaries. The generated nodemap 
-    also accommodates certain geometrical constraints like sidewalls.
-
-    Attributes:
-        set_phases (dict): Dictionary defining the method used for phase addition:
-            - "drainage": Initializes fluid phase from the inlet boundary.
-            - "imbibition": Fluid phase expands from the outlet boundary.
-            - "invasion": Fluid phase initiates simultaneously from multiple boundaries.
-            - "droplet": Initializes spherical fluid droplets in the domain.
-            - "bridge": Adds bridge-shaped structures within the domain.
-        domain (np.ndarray): Simulation domain, a 3D array.
-        fluid_nodes (Optional[Tuple[np.ndarray, ...]]): Indices of fluid (empty) nodes.
-
-    Methods:
-        add_phases(): Adds fluid phases based on the set scenario parameters.
-
-    Examples:
-        --------------------------------------------
-        Basic Drainage Simulation:
-        --------------------------------------------
-        >>> domain = np.zeros((100, 100, 100))
-        >>> mp_nodemap = MultiPhaseNodeMap(
-        ...     domain=domain, 
-        ...     set_phases={"method": "drainage", "limit": 10}
-        ... )
-        >>> mp_nodemap.add_phases()
-
-        --------------------------------------------
-        Adding Fluid Droplets and Free Surface:
-        --------------------------------------------
-        >>> domain = np.zeros((80, 80, 80))
-        >>> mp_nodemap = MultiPhaseNodeMap(
-        ...     domain=domain,
-        ...     set_phases={
-        ...         "method": "droplet",
-        ...         "drop_center": [(40, 40, 40)],
-        ...         "drop_radius": [20],
-        ...         "free_surface": {"direction": "z", "size": 5},
-        ...     }
-        ... )
-        >>> mp_nodemap.add_phases()
-
-        --------------------------------------------
-        Invasion-Free Surface Case:
-        --------------------------------------------
-        >>> domain = np.zeros((60, 60, 60))
-        >>> mp_nodemap = MultiPhaseNodeMap(
-        ...     domain=domain,
-        ...     set_phases={
-        ...         "method": "invasion-free-surface",
-        ...         "air_pocket": 5,
-        ...     }
-        ... )
-        >>> mp_nodemap.add_phases()
+    Generates nodemap for imbibitioon problem by adding 
+    wetting phases: 3
+    non wetting phase: 0
+    solids: 1
+    boundary: 2
     """
-    def __init__(
-        self, 
-        domain: Optional[np.ndarray] = None, 
-        file_stem: Optional[str] = None, 
-        save_path: Optional[Union[str, Path]] = None, 
-        side_walls: Optional[Union[int, List[int]]] = None,  
-        geometry_side_walls: Optional[Union[int, List[int]]] = None, 
-        padding: Optional[Union[int, List[int]]] = None, 
-        set_phases: Optional[dict] = {'method': 'drainage'}
-    ) -> None:
+    def add_phases(self, limit: Optional[int] = None) -> None:
         """
-        Initializes a MultiPhaseNodeMap instance.
-
-        Args:
-            domain (Optional[np.ndarray]): The 3D array representing the simulation domain.
-            file_stem (Optional[str]): The stem name for stored files.
-            save_path (Optional[Union[str, Path]]): Directory path for saving exported files.
-            side_walls (Optional[Union[int, List[int]]]): Thickness of side walls around the domain.
-            geometry_side_walls (Optional[Union[int, List[int]]]): Geometry-specific side walls.
-            padding (Optional[Union[int, List[int]]]): Padding values for all six axes.
-            set_phases (Optional[dict]): Parameters for fluid phase addition within the domain:
-                - "method" (str): Specifies the method of phase addition.
-                - Other optional keys for specific methods (e.g., limit, drop_center, air_pocket).
-
-        Raises:
-            ValueError: If `set_phases["method"]` is unsupported.
-            Exception: If domain input is invalid (not a 3D numpy array).
+        fills the domain up to the limit with the wetting fluid
+        limit: int
+        if limit is not specified, uses padding[0] + 3
         """
-        super().__init__(
-            domain=domain, 
-            file_stem=file_stem, 
-            save_path=save_path, 
-            padding=padding, 
-            side_walls=side_walls, 
-            geometry_side_walls=geometry_side_walls, 
-        )
-        
-        self.set_phases = set_phases
-        valid_methods = ['drainage', 'imbibition', 'invasion', 'invasion-free-surface', 
-                         'droplet', 'bridge', 'droplet_free_surface']
-        method = self.set_phases.get("method")
-        if method not in valid_methods:
-            raise ValueError(
-                f"Unsupported method '{method}' for phase addition. "
-                f"Choose from {valid_methods}."
-            )
-        print(f"MultiPhaseNodeMap initialized with method: {method}")
-
-    def add_phases(self) -> None:
-        """
-        Adds fluid phases to the simulation domain based on `set_phases` configuration.
-
-        Supported Methods:
-            - "drainage": Adds fluid phase from the inlet boundary.
-            - "imbibition": Adds fluid phase from the outlet boundary.
-            - "invasion": Adds fluid phase from all six boundaries.
-            - "invasion-free-surface": Initializes invasion from boundaries with a free surface.
-            - "droplet": Adds spherical fluid droplets within the domain.
-            - "bridge": Adds fluid bridges spanning specific regions.
-
-        Raises:
-            ValueError: For unsupported method types or missing required parameters.
-        """
-        method = self.set_phases['method']
-        def _apply_drainage(limit: Optional[int]) -> None:
-            if limit:
-                self.domain[:limit, :, :] = 3
-            else:
-                self.domain[:self.padding[0], :, :] = 3
-        
-        def _apply_imbibition(limit: Optional[int]) -> None:
-            if limit:
-                self.domain[:limit, :,:] = 3
-            else:
-                self.domain[:self.padding[1] + 3, :, :] = 3
-
-        def _apply_invasion(limit: Optional[int]) -> None:
-            if not limit:
-                limit = self.padding[1] + 3
+        if limit:
             self.domain[:limit, :, :] = 3
-            self.domain[-limit:, :, :] = 3
-            self.domain[:, :limit, :] = 3
-            self.domain[:, -limit:, :] = 3
-            self.domain[:, :, :limit] = 3
-            self.domain[:, :, -limit:] = 3
-        
-        def _apply_invasion_free_surface(air_pocket: Optional[int]) -> None:
-            self.domain[:self.padding[0], :, :] = 3
-            self.domain[-self.padding[1]:, :, :] = 3
-            self.domain[:, :self.padding[2], :] = 3
-            self.domain[:, -self.padding[3]:, :] = 3
-            self.domain[:, :, :self.padding[4]] = 3
-            self.domain[:, :, -self.padding[5]:] = 3
-            if air_pocket:
-                self.domain[:, -air_pocket:, :] = 0
-
-        def _apply_droplets(droplets: List[dict]) -> None:
-            for drop in droplets:
-                center = drop["drop_center"]
-                radius = drop["drop_radius"]
-                coords_x, coords_y, coords_z = center
-                droplet_indices = np.where(
-                    (self.xx - coords_x) ** 2 + (self.yy - coords_y) ** 2 + (self.zz - coords_z) ** 2 <= radius ** 2
-                )
-                self.domain[droplet_indices] = 3
-                if drop.get("free_surface"):
-                    free_surface_dir = drop["free_surface"]["direction"]
-                    free_surface_size = drop["free_surface"]["size"]
-                    coord = {"x": self.size_x - free_surface_size, 
-                             "y": self.size_y - free_surface_size, 
-                             "z": self.size_z - free_surface_size}[free_surface_dir]
-                    free_slice = self.get_slice(direction=free_surface_dir, coord=coord, thickness=free_surface_size)
-                    self.domain[free_slice] = 3
-        
-        def _apply_bridge(props: dict) -> None:
-            bridge_cx, bridge_cz = props["bridge_center"]
-            bridge_radius = props["bridge_radius"]
-            bridge_bounds = props["bridge_bounds"]
-            bridge_indices = np.where(
-                ((self.xx - bridge_cx) ** 2 + (self.zz - bridge_cz) ** 2 <= bridge_radius ** 2) &
-                (self.yy >= bridge_bounds[0]) & (self.yy <= bridge_bounds[1])
-            )
-            self.domain[bridge_indices] = 3
-
-        # Execute based on method
-        if method == "drainage":
-            _apply_drainage(limit=self.set_phases.get("limit"))
-        elif method == "imbibition":
-            _apply_imbibition(limit=self.set_phases.get("limit"))
-        elif method == "invasion":
-            _apply_invasion(limit=self.set_phases.get("limit"))
-        elif method == "invasion-free-surface":
-            _apply_invasion_free_surface(air_pocket=self.set_phases.get("air_pocket"))
-        elif method == "droplet":
-            droplets = self.set_phases.get("droplets", [{"drop_center": self.set_phases["drop_center"], "drop_radius": self.set_phases["drop_radius"], "free_surface": self.set_phases.get("free_surface")}])
-            _apply_droplets(droplets)
-        elif method == "bridge":
-            _apply_bridge(props=self.set_phases)
         else:
-            raise ValueError(f"Unsupported method '{method}' provided in `set_phases`.")         
-
+            self.domain[:self.padding[0] + 3, :, :] = 3
         self.fluid_nodes = np.where(self.domain == 0)
 
+#----------------------#
+#  Drainage nodemap    #
+#----------------------#
+class Drainage(NodeMap):
+    """
+    Generates nodemap for drainage problem by adding 
+    non wetting phases: 3
+    non wetting phase: 0
+    solids: 1
+    boundary: 2
+    The logic is very similar to Imbibition; except that nonwetting fluid
+    does not overlap with the domain st the start
+    """
+    def add_phases(self, limit: Optional[int] = None) -> None:
+        """
+        fills the domain up to the limit with the wetting fluid
+        limit: int
+        if limit is not specified, uses padding[0] + 3
+        """
+        if limit:
+            self.domain[:limit, :, :] = 3
+        else:
+            self.domain[:self.padding[0], :, :] = 3
+        self.fluid_nodes = np.where(self.domain == 0)
 
+#----------------------------#
+#  Droplet spread nodemap    #
+#----------------------------#
+@dataclass
+class Droplet:
+    center: Tuple[int, int, int]
+    radius: int 
+
+class DropletSpread(NodeMap):
+    """
+    Generates nodemap for droplet spread on a surface
+    It can simulate more than one droplet
+    """
+    def add_phases(self, droplets: List[Droplet]) -> None:
+        """
+        adds droplet to the domain. 
+        Domain must contain solid regions. such as a rough surface 
+        or a surface with patterns
+        """
+        for drop in droplets:
+            coord_x, coord_y, coord_z = drop.center 
+            radius = drop.radius 
+            drop_index = np.where(
+            (self.xx - coord_x) ** 2 + 
+            (self.yy - coord_y) ** 2 + 
+            (self.zz - coord_z) ** 2 <= radius ** 2
+                )
+            self.domain[drop_index] = 3
+
+#-------------------------------#
+# Nodemap Generation for drying #
+#-------------------------------#
 class DryingNodeMap(NodeMap):
     """
     A specialized class for generating LBM-compatible node maps for drying simulations. 
