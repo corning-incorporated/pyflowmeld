@@ -24,7 +24,7 @@ import pytest
 import numpy as np
 from pathlib import Path 
 
-from pyflowmeld.preprocess.nodemap import NodeMap
+from pyflowmeld.preprocess._base import NodeMap
 
 
 class ConcreteNodeMap(NodeMap):
