@@ -591,13 +591,6 @@ class NodeMap(metaclass = ABCMeta):
         Returns:
             Tuple[slice, slice, slice]: A tuple representing slices that can be used to index the domain.
 
-        Raises:
-            ValueError: If the direction is invalid or the coordinate is out of bounds.
-
-        Example:
-            >>> nodemap = NodeMap(domain=np.zeros((10, 10, 10)))
-            >>> result = nodemap.get_slice('x', 5, thickness=2)
-            >>> print(result)  # Output: (slice(5, 7), slice(0, 10), slice(0, 10))
         """
         resolution = (self.size_x, self.size_y, self.size_z)  # Extract domain resolution
         return tools.get_slice(domain_size = resolution, direction = direction, coordinate = coordinate)
@@ -725,51 +718,37 @@ class NodeMap(metaclass = ABCMeta):
             return None 
         
     @classmethod
-    @abstractmethod
     def from_file(
-        cls, file_name: Union[str, PathLike], padding: Optional[Union[int, List[int]]] = None, save_path: Optional[Union[str, PathLike]] = None, **kw: Any
-    ) -> "NodeMap":
-        """
-        Constructs a NodeMap instance from a domain file. Subclasses must implement this method.
-
-        Args:
-            file_name (Union[str, PathLike]): Path to the file containing the domain grid data.
-            padding (Optional[Union[int, List[int]]]): Padding array specifying padding values. Default is None.
-            save_path (Optional[Union[str, PathLike]]): Path to the directory for saving output files. Default is None.
-            **kw (Any): Additional arguments for subclass-specific behavior.
-
-        Returns:
-            NodeMap: A NodeMap instance initialized based on the file.
-
-        Notes:
-            - This method is abstract and must be implemented by subclasses.
-            - The implementation should be tailored to specific file formats.
-
-        Example:
-            >>> class CustomNodeMap(NodeMap):
-            ...     @classmethod
-            ...     def from_file(cls, file_name, padding=None, save_path=None, **kw):
-            ...         # Custom implementation based on file format
-            ...         pass
-        """
-        pass
-
-    @classmethod
-    def from_lbm_dat(
         cls,
-        file_name: Union[str, PathLike],
-        domain_size: Iterable[int],
+        file_path: Union[str, PathLike],
+        domain_size: Optional[Iterable[int]] = None,
         file_stem: Optional[str] = None,
         save_path: Optional[Union[str, PathLike]] = None,
         padding: Optional[Union[int, List[int]]] = None,
         side_walls: Optional[Union[int, List[int]]] = None,
+        geometry_side_walls: Optional[Union[int, List[int]]] = None, 
         **kw: Any,
         ) -> "NodeMap":
         """
-        Instantiates a NodeMap from an LBM-compatible `.dat` file containing 0s and 1s.
+        Instantiates a NodeMap from a file that contains 0s and 1s. 
+        0s for voids and 1s for solid regions. 
+        the file can contain 1s, 2s or any other number for solid.
+        The file can have a header, but all 0s and 1s must be arranged in rows. 
+        For example, if the initial geometry file is an array of 100x100x100 the number of
+        rows of 0s and 1s in the file must be 10e6.
+        This format is a compatible format for most CT scan files. 
+
+        It is possible to append domain shape in the file header:
+        # 150 150 150
+        0
+        1
+        1
+        .. 
+        then it is not necessary to pass domain_size and the domain_size is automatically 
+            inferred from the file. 
 
         Args:
-            file_name (Union[str, PathLike]): Path to the `.dat` file containing grid data.
+            file_path (Union[str, PathLike]): Path to the `.dat` file containing grid data.
             domain_size (Iterable[int]): The size of the domain as (nx, ny, nz).
             file_stem (Optional[str]): File stem to name the outputs. Defaults to the stem of `file_name`.
             save_path (Optional[Union[str, PathLike]]): Directory where outputs and processed files will be saved.
@@ -788,45 +767,58 @@ class NodeMap(metaclass = ABCMeta):
             ValueError: If the domain shape does not match `domain_size` or the `.dat` file format is invalid.
 
         Details:
-            - The `.dat` file is assumed to contain flattened 3D grid data with 0s and 1s:
+            - The `.dat` file is assumed to contain flattened 3D grid data with 0s and 1s as mentioned above:
                 - 0: Void (fluid)
                 - 1: Solid
+                - other values for solids are accepted, such as 2 for boundary nodes. So it is possible
+                    to reuse LBM nodemap files and change the padding or sidewalls
     
             - Domain resolution (`domain_size`) must match the actual dimensions of the file.
 
         Example:
             >>> file_path = "./data/lbm_domain.dat"
             >>> domain_size = (100, 100, 100)
-            >>> node_map = NodeMap.from_lbm_dat(file_path, domain_size, padding=[1, 1, 1, 1, 0, 0])
+            >>> node_map = NodeMap.from_file(file_path, domain_size, padding=[1, 1, 1, 1, 0, 0])
             >>> print(node_map.domain.shape)  # Output: (102, 102, 100)
         """
-        if not path.exists(file_name):
-            raise FileNotFoundError(f"The file '{file_name}' does not exist.")
-        try:
-            domain = np.loadtxt(file_name, dtype=int).reshape(domain_size)
-        except ValueError:
-            raise ValueError(
-                f"Could not reshape file '{file_name}' into the domain size {domain_size}. "
-                f"Ensure the file format and domain resolution are correct."
-            )
-        domain = np.where(domain == 1, 1, 0)
-        if save_path is None:
-            save_path = Path(file_name).parent 
-        padding_normalized = cls._normalize_input(padding, default=0)
-        side_walls_normalized = cls._normalize_input(side_walls, default=0)
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"The file '{file_path}' does not exist.")
+    
+        shape = tuple(domain_size) if domain_size is not None else None 
+        inferred_shape = None 
 
-        if file_stem is None:
-            file_stem = Path(file_name).stem
+        with open(file_path, 'r') as f:
+            for line in f:
+                line_strip = line.strip()
+                if not line_strip:
+                    continue
+                if line_strip.startswith('#'):
+                    if shape is None:
+                        words = line_strip[1:].strip().split()
+                        if len(words) == 3 and all(w.isdigit() for w in words):
+                            inferred_shape = tuple(int(w) for w in words)
+                    continue 
+                break
 
-        init_kw = {
-            "domain": domain,
-            "file_stem": file_stem,
-            "save_path": save_path,
-            "padding": padding_normalized,
-            "side_walls": side_walls_normalized,
-            **kw,
-            }
-        return cls(**init_kw)
+        if shape is None:
+            if inferred_shape is not None:
+                shape = inferred_shape
+            else:
+                raise ValueError(
+                    "Domain shape was not provided and could not be inferred from the file"
+                )
+        
+        domain = np.loadtxt(file_path, dtype = int, comments = '#').reshape(shape)
+        stem = file_stem or file_path.stem 
+        save_path = Path(save_path) if save_path else file_path.parent
+        padding = cls._normalize_input(padding, default = 0)
+        side_walls = cls._normalize_input(side_walls, default = 0)
+        geometry_side_walls = cls._normalize_input(geometry_side_walls, default = 0)
+        
+        return cls(domain = domain, file_stem = stem, save_path = save_path,
+                   padding = padding, side_walls = side_walls, geometry_side_walls = geometry_side_walls,
+                   **kw)
 
     @classmethod
     def from_array(
@@ -1342,5 +1334,4 @@ def drying_nodemap_from_benchmark(
 
 
 
-        
         
