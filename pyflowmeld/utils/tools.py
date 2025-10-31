@@ -25,7 +25,7 @@ from natsort import natsorted
 from typing import List, Tuple, Sequence, Optional, Literal    
 import re
 
-def get_slice(
+def get_slice(*,
     domain_size: Sequence[int],
     direction: Literal['x', 'y', 'z'],
     coordinate: int
@@ -59,7 +59,7 @@ def get_slice(
     direction = 'x'
     coordinate = 10
 
-    result = get_slice(domain_size, direction, coordinate)
+    result = get_slice(domain_size = domain_size, direction = direction, coordinate = coordinate)
     print(result)  # Output: (slice(10, 11), slice(0, 100), slice(0, 100))
     ```
     """

@@ -287,25 +287,23 @@ class BounceBackGen:
 # ################################## #
 class NodeMap(metaclass = ABCMeta):
     """
-    Base class for generating nodemaps for simulation domains in fluid dynamics and multiphase simulations.
+    Base class for generating nodemaps for multiphase simulations.
     Domain and Geometry are normally different but can also be the same. 
-    Domain is a result of adding padding to the geometry.
+    Domain is a result of adding padding to the geometry or adding side walls.
     This class supports:
         - Adding padding (x, y, z) to the simulation domain.
         - Creating sidewalls around the domain.
         - Supporting bounce-back conditions using circular shifts.
-        - release boundaries, and centralized objects (e.g., droplets, bridges).
         - Exporting simulation domains to `.dat`, `.csv`, and `.vtk` formats.
 
     Attributes:
         domain (numpy.ndarray): The input 3D array representing the simulation domain.
         padding (numpy.array): Amount of padding added to each side of the domain ([x_min, x_max, y_min, y_max, z_min, z_max]).
         side_walls (numpy.array): Size of sidewalls added to the domain (default is zeros for no walls).
-        geometry_side_walls (numpy.array): Sidewalls applied selectively to geometries.
+        geometry_side_walls (numpy.array): Sidewalls the wrap the geometry
         save_path (str): Directory to save the exported files.
         file_name (str): Stem name used for output files.
         fluid_nodes, boundary_nodes, solid_nodes (tuple): Node indices for fluid, boundary, and solid nodes.
-        void_fraction (float): Fractional void in the domain computed from solid nodes.
 
     Methods:
         add_padding(): Adds padding to the domain (in x, y, z directions).
@@ -318,7 +316,7 @@ class NodeMap(metaclass = ABCMeta):
 
     Examples:
         >>> domain = np.zeros((10, 10, 10))
-        >>> nodemap = NodeMap(domain=domain, padding=[1, 1, 1, 1, 1, 1], save_path="./")
+        >>> nodemap = NodeMap(domain=domain, padding=[2, 2, 2, 2, 2, 2], save_path="./")
 
         This creates a domain with padded boundaries. 
         The nodemap is then exported to a `.dat` file in the specified directory.
@@ -464,21 +462,6 @@ class NodeMap(metaclass = ABCMeta):
                           This approach analyzes neighbor states on a row-wise basis.
                 - 'edt': Uses Euclidean Distance Transform to classify nodes. 
                          Nodes within a distance range are classified as boundary or solid.
-
-        Sets:
-            - self.boundary_nodes (Tuple[np.ndarray, ...]): Indices of boundary nodes where 
-                                                       bounce-back conditions are applied.
-            - self.solid_nodes (Tuple[np.ndarray, ...]): Indices of solid nodes.
-
-        Raises:
-            ValueError: If an invalid `bounce_method` is specified.
-
-        Examples:
-            >>> domain = np.random.choice([0, 1], size=(10, 10, 10))
-            >>> nodemap = NodeMap(domain=domain)
-            >>> nodemap.set_bounceback(bounce_method='circ')
-            >>> print(nodemap.boundary_nodes)  # Prints indices of the boundary nodes
-            >>> print(nodemap.solid_nodes)    # Prints indices of the solid nodes
         """
         if bounce_method == 'circ':
             bounce_domain = BounceBackGen(domain=self.domain)()
@@ -488,6 +471,8 @@ class NodeMap(metaclass = ABCMeta):
             bounce_domain = edt(self.domain)
             self.boundary_nodes = np.where((bounce_domain > 0)*(bounce_domain < 2))
             self.solid_nodes = np.where(bounce_domain >= 2)
+        else:
+            raise("not implemented error")
 
     @abstractmethod 
     def add_phases(self):
@@ -497,50 +482,37 @@ class NodeMap(metaclass = ABCMeta):
         self.domain[self.boundary_nodes] = 1
         self.domain[self.solid_nodes] = 2
     
-    def _add_sidewalls(self, side_wall_key: Literal["geometry", "domain"] = "domain"):
+    def _add_sidewalls(self, 
+        side_wall_key: Literal["geometry", "domain"] = "domain", 
+        boundary_value: int = 1):
         """
-        Adds sidewalls to the domain based on the specified key.
-
-        Args:
-            side_wall_key (Literal["geometry", "domain"]): Determines which set of sidewall thickness values 
-                to use for adding sidewalls:
-                - "geometry": Uses `self.geometry_side_walls` for sidewall dimensions.
-                - "domain": Uses `self.side_walls` for sidewall dimensions.
-                Default is "domain".
-
-        Modifies:
-            - self.domain: Updates the domain array to include boundary nodes (value = 1) for sidewalls.
-
-        Behavior:
-            Sidewalls are added along all six axes (x_min, x_max, y_min, y_max, z_min, z_max) based on the 
-            thickness values provided by the relevant side wall set.
-
-        Examples:
-            >>> domain = np.zeros((10, 10, 10))
-            >>> side_walls = [1, 1, 2, 2, 3, 3]
-            >>> nodemap = NodeMap(domain=domain, side_walls=side_walls)
-            >>> nodemap.add_sidewalls(side_wall_key="domain")
-            >>> print(nodemap.domain.shape)
-            # Sidewalls with thickness [1, 1, 2, 2, 3, 3] added to the domain.
+        adds side walls to an array. 
+        it can enclose the initial geometry with side walls
+        or it can add side walls to a padded domain. 
+        geometry: enclosing a geometry with sidewalls
+        domain: a domain (which is geometry + paddings) is enclosed by walls
         """
         side_walls = {"geometry": self.geometry_side_walls,
             "domain": self.side_walls}[side_wall_key]
+        domain_shape = self.domain_shape 
 
-        if side_walls[0] != 0:
-            self.domain[0:side_walls[0],:,:] = 1 
-        if side_walls[1] != 0:
-            self.domain[-side_walls[1]:,:,:] = 1 
+        for axis, (low, high) in enumerate([(0, 1), (2, 3), (4, 5)]):
+            t_low = side_walls[low]
+            t_high = side_walls[high]
+            sz = domain_shape[axis]
+            if t_low > 0:
+                slc = [slice(None)]*3
+                slc[axis] = slice(0, t_low)
+                self.domain[tuple(slc)] = boundary_value 
+                if t_low > sz:
+                    print(f"Warning: lower sidewall thicker than domain (axis {axis})")
 
-        if side_walls[2] != 0 :
-            self.domain[:,0:side_walls[2],:] = 1 
-        if side_walls[3] != 0:
-            self.domain[:,-side_walls[3]:,:] = 1 
-        
-        if side_walls[4] != 0:
-            self.domain[:,:,0:side_walls[4]] = 1 
-        if side_walls[5] != 0:
-            self.domain[:,:,-side_walls[5]:] = 1
-
+            if t_high > 0:
+                slc = [slice(None)]*3
+                slc[axis] = slice(sz - t_high, sz)
+                self.domain[tuple(slc)] = boundary_value 
+                if t_high > sz:
+                    print(f"Warning: upper sidewall thicker than domain (axis {axis})")
 
     def to_dat(self):
         file_name = path.join(self.save_path, self.file_name + '.dat')
@@ -606,8 +578,8 @@ class NodeMap(metaclass = ABCMeta):
                         float_format = '%.5f')
     
     # slice output of data
-    def get_slice(self, direction: Literal['x', 'y', 'z'],
-            coord: int):
+    def get_slice(self, *, direction: Literal['x', 'y', 'z'],
+            coordinate: int):
         """
         Returns a tuple of slices to extract a region from the domain based on a given direction and coordinate.
         Utilizes the `get_slice` function from `tools.py`.
@@ -628,11 +600,11 @@ class NodeMap(metaclass = ABCMeta):
             >>> print(result)  # Output: (slice(5, 7), slice(0, 10), slice(0, 10))
         """
         resolution = (self.size_x, self.size_y, self.size_z)  # Extract domain resolution
-        return tools.get_slice(resolution, direction, coord)
+        return tools.get_slice(domain_size = resolution, direction = direction, coordinate = coordinate)
 
     def to_slice_csv(self, slice_direction: Literal['x', 'y', 'z']):
         res = {'x': self.size_x, 'y': self.size_y, 'z': self.size_z}[slice_direction]
-        slicer = lambda coord: self.get_slice(slice_direction, coord)
+        slicer = lambda coord: self.get_slice(direction = slice_direction, coordinate = coord)
         slice_dir = path.join(self.save_path, slice_direction + '_slices')
         if not path.exists(slice_dir):
             makedirs(slice_dir)

@@ -137,3 +137,22 @@ class TestNodeMap:
         vals, counts = np.unique(nm.domain, return_counts=True)
         assert 0 in vals and 1 in vals, "Domain should contain both fluid and solid nodes after processing"
 
+    def test_add_sidewalls_sets_sidewall_faces(self, temp_dir):
+        """
+        Tests that add_sidewalls correctly sets the six faces of the domain
+        according to side wall thickness configuration.
+        """
+        shape = (10, 10, 10)
+        domain = np.zeros(shape, dtype=int)
+        side_walls = [2, 1, 1, 2, 2, 1]  # [x_min, x_max, y_min, y_max, z_min, z_max]
+        nm = ConcreteNodeMap(domain=domain, file_stem="swall", save_path=temp_dir, side_walls=side_walls)
+        nm._add_sidewalls("domain")
+        assert (nm.domain[0:2,:,:] == 1).all(), "x_min sidewall not set correctly"
+        assert (nm.domain[-1,:,:] == 1).all(), "x_max sidewall not set correctly"
+        assert (nm.domain[:,0,:] == 1).all(), "y_min sidewall not set correctly"
+        assert (nm.domain[:,-2:,:] == 1).all(), "y_max sidewall not set correctly"
+        assert (nm.domain[:,:,0:2] == 1).all(), "z_min sidewall not set correctly"
+        assert (nm.domain[:,:,-1] == 1).all(), "z_max sidewall not set correctly"
+        inner = nm.domain[2:-1, 1:-2, 2:-1]
+        if inner.size > 0:
+            assert (inner == 0).all(), "Inner non-sidewall region was overwritten"
