@@ -21,10 +21,10 @@ import numpy as np
 from dataclasses import dataclass 
 from typing import Optional, Literal, Union, List, Any, Tuple    
 from pathlib import Path
+from os import path, makedirs 
 from .. utils import benchmarks   
 from datetime import datetime 
 from _base import NodeMap 
-
 
 # ################################################## #
 # generates nodemaps for multiphase flow simulations #

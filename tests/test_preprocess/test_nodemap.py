@@ -31,9 +31,6 @@ class ConcreteNodeMap(NodeMap):
     def add_phases(self):
         pass 
 
-    @classmethod 
-    def from_file(cls, *args, **kwargs):
-        pass 
 
 #--- Test class for NodeMap Base class ---#
 class TestNodeMap:
@@ -156,3 +153,42 @@ class TestNodeMap:
         inner = nm.domain[2:-1, 1:-2, 2:-1]
         if inner.size > 0:
             assert (inner == 0).all(), "Inner non-sidewall region was overwritten"
+
+    def test_from_file_shape_inference_and_loading(self, temp_dir):
+        """
+        Tests NodeMap.from_file: infers shape from header and loads correct domain.
+        The test tests three conditions:
+        1) header is passed by user 
+        2) header is inferred from file header
+        3) header is not passed at all, in which case an exception must be raised 
+        """
+        shape = (4, 3, 2)
+        domain = np.arange(np.prod(shape)).reshape(shape)
+        flat_str = "\n".join(str(x) for x in domain.flatten())
+        file_path = Path(temp_dir) / "test_domain_file.dat"
+
+        with open(file_path, "w") as f:
+            f.write("# {} {} {}\n".format(*shape))
+            f.write(flat_str)
+            f.write("\n")
+
+        nm = ConcreteNodeMap.from_file(file_path)
+        assert nm.domain_shape == shape
+        assert np.array_equal(nm.domain, domain), "Domain loaded from file is incorrect"
+
+        nm2 = ConcreteNodeMap.from_file(file_path, domain_size=shape)
+        assert nm2.domain_shape == shape
+        assert np.array_equal(nm2.domain, domain), "Domain loaded with explicit shape is incorrect"
+
+        file_path2 = Path(temp_dir) / "test_domain_no_header.dat"
+        with open(file_path2, "w") as f:
+            f.write(flat_str)
+            f.write("\n")
+
+        with pytest.raises(ValueError):
+            _ = ConcreteNodeMap.from_file(file_path2)  
+        nm3 = ConcreteNodeMap.from_file(file_path2, domain_size=shape)
+        assert nm3.domain_shape == shape
+        assert np.array_equal(nm3.domain, domain)
+    
+
