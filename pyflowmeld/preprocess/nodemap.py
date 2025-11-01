@@ -16,15 +16,27 @@
 # David Heine   Principal Scientist and Manager                                      #
 #               heinedr@corning.com                                                  #
 # ################################################################################## #
-
+import sys 
 import numpy as np
 from dataclasses import dataclass 
 from typing import Optional, Literal, Union, List, Any, Tuple    
 from pathlib import Path
 from os import path, makedirs 
-from .. utils import benchmarks   
-from datetime import datetime 
-from _base import NodeMap 
+from datetime import datetime
+
+# module imports 
+from pyflowmeld import find_package_root
+
+package_root = find_package_root(Path(__file__))
+if str(package_root) not in sys.path:
+    sys.path.insert(0, str(package_root))
+
+try:
+    from pyflowmeld.utils import benchmarks   
+    from pyflowmeld.preprocess._base import NodeMap
+except ModuleNotFoundError:
+    from .. utils import benchmarks
+    from . _base import NodeMap 
 
 # ################################################## #
 # generates nodemaps for multiphase flow simulations #
@@ -99,12 +111,11 @@ class DropletSpread(NodeMap):
         for drop in droplets:
             coord_x, coord_y, coord_z = drop.center 
             radius = drop.radius 
-            drop_index = np.where(
+            self.domain[np.where(
             (self.xx - coord_x) ** 2 + 
             (self.yy - coord_y) ** 2 + 
             (self.zz - coord_z) ** 2 <= radius ** 2
-                )
-            self.domain[drop_index] = 3
+                )] = 3
 
 #-------------------------------#
 # Nodemap Generation for drying #
@@ -122,6 +133,12 @@ class ZoneConfig:
     z_max: int = 0 
 
 #--------------------------#
+
+
+# ######################################### #
+#   Nodemap class for Drying problems       #
+# ######################################### #
+
 class DryingNodeMap(NodeMap):
     """
     A specialized class for generating LBM-compatible node maps for drying simulations. 

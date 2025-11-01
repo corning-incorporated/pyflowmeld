@@ -25,6 +25,7 @@ import numpy as np
 from pathlib import Path 
 
 from pyflowmeld.preprocess._base import NodeMap
+from pyflowmeld.preprocess.nodemap import DryingNodeMap 
 
 
 class ConcreteNodeMap(NodeMap):
@@ -190,5 +191,22 @@ class TestNodeMap:
         nm3 = ConcreteNodeMap.from_file(file_path2, domain_size=shape)
         assert nm3.domain_shape == shape
         assert np.array_equal(nm3.domain, domain)
-    
+
+#--------------------------------------#
+#    tests for DryingNodeMap class     #
+# -------------------------------------# 
+class TestDryingNodeMap:
+    """
+    Tests for DryingNodeMap class
+    """
+    def test_initialization_defaults_and_attrs(self, temp_dir):
+        shape = (50, 50, 50)
+        domain = np.random.randint(0,2, shape)
+        nm = DryingNodeMap(domain=domain, file_stem="dry_default", save_path=temp_dir)
+        zone = nm.gap_from_edge
+        assert (zone.x_min, zone.y_min, zone.z_min, zone.x_max, zone.y_max, zone.z_max) == (2, 2, 2, 2, 2, 2)
+        assert np.array_equal(nm.domain, domain)
+        assert nm.file_stem == "dry_default"
+        assert nm.save_path == Path(temp_dir)
+        assert nm.domain_shape == shape
 
