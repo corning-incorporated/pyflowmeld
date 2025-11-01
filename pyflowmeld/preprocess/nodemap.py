@@ -221,22 +221,12 @@ class DryingNodeMap(NodeMap):
     
     @property
     def domain_boundaries(self) -> ZoneConfig:
-        x_min = self.padding[0] + self.side_walls[0]
-        y_min = self.padding[2] + self.side_walls[2]
-        z_min = self.padding[4] + self.side_walls[4]
-
-        x_max = self.domain_shape[0] - (self.padding[1] + self.side_walls[1])
-        y_max = self.domain_shape[1] - (self.padding[3] + self.side_walls[3])
-        z_max = self.domain_shape[2] - (self.padding[5] + self.side_walls[5])
-
-        return ZoneConfig(
-        x_min = x_min,
-        y_min = y_min,
-        z_min = z_min,
-        x_max = x_max, 
-        y_max = y_max, 
-        z_max = z_max 
-        )
+        boundaries = {}
+        axes = ['x', 'y', 'z']
+        for i, axis in enumerate(axes):
+            boundaries[f"{axis}_min"] = self.padding[2*i] + self.side_walls[2*i]
+            boundaries[f"{axis}_max"] = self.domain_shape[i] - (self.padding[2*i+1] + self.side_walls[2*i+1])
+        return ZoneConfig(**boundaries)
 
     def _add_liquid(self):
         """
