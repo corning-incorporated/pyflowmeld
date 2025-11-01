@@ -233,17 +233,15 @@ class DryingNodeMap(NodeMap):
         Adds fluid phase to the domain, excluding areas defined by liquid_zone
         Modifies the domain by marking nodes within the restricted boundaries as fluid (value = 3).
         """
-        boundaries = self.domain_boundaries 
-        min_x = boundaries.x_min + self.gap_from_edge.x_min 
-        max_x = boundaries.x_max - self.gap_from_edge.x_max 
-
-        min_y = boundaries.y_min + self.gap_from_edge.y_min 
-        max_y = boundaries.y_max - self.gap_from_edge.y_max 
-
-        min_z = boundaries.z_min + self.gap_from_edge.z_min 
-        max_z = boundaries.z_max - self.gap_from_edge.z_max 
-
-        self.domain[min_x:max_x, min_y:max_y, min_z:max_z] = 3    
+        boundaries = self.domain_boundaries
+        gap = self.gap_from_edge
+        axes = ['x', 'y', 'z']
+        mins = []
+        maxs = []
+        for axis in axes:
+            mins.append(getattr(boundaries, f"{axis}_min") + getattr(gap, f"{axis}_min"))
+            maxs.append(getattr(boundaries, f"{axis}_max") - getattr(gap, f"{axis}_max"))
+        self.domain[mins[0]:maxs[0], mins[1]:maxs[1], mins[2]:maxs[2]] = 3   
   
     def add_phases(self):
         """
