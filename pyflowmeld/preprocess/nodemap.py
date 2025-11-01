@@ -33,10 +33,10 @@ if str(package_root) not in sys.path:
 
 try:
     from pyflowmeld.utils import benchmarks   
-    from pyflowmeld.preprocess._base import NodeMap
+    from pyflowmeld.preprocess._base import NodeMap, ZoneConfig
 except ModuleNotFoundError:
     from .. utils import benchmarks
-    from . _base import NodeMap 
+    from . _base import NodeMap, ZoneConfig 
 
 # ################################################## #
 # generates nodemaps for multiphase flow simulations #
@@ -116,24 +116,6 @@ class DropletSpread(NodeMap):
             (self.yy - coord_y) ** 2 + 
             (self.zz - coord_z) ** 2 <= radius ** 2
                 )] = 3
-
-#-------------------------------#
-# Nodemap Generation for drying #
-#-------------------------------#
-@dataclass 
-class ZoneConfig:
-    """ 
-    configuration for liquid release zone
-    """
-    x_min: int = 0
-    x_max: int = 0
-    y_min: int = 0
-    y_max: int = 0
-    z_min: int = 0
-    z_max: int = 0 
-
-#--------------------------#
-
 
 # ######################################### #
 #   Nodemap class for Drying problems       #

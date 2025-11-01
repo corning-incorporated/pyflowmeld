@@ -17,7 +17,8 @@
 # David Heine   Principal Scientist and Manager                                      #
 #               heinedr@corning.com                                                  #
 # ################################################################################## #
-
+import sys 
+import timeit 
 import numpy as np
 import pandas as pd
 from typing import Optional, Literal, Union, List, Any, Tuple, Iterable
@@ -27,9 +28,29 @@ from os import path, makedirs, PathLike
 from scipy.ndimage import distance_transform_edt as edt
 from dataclasses import dataclass
 
-from ..utils import benchmarks, tools
-from datetime import datetime
-import timeit
+from pyflowmeld import find_package_root
+
+package_root = find_package_root(Path(__file__))
+if str(package_root) not in sys.path:
+    sys.path.insert(0, str(package_root))
+
+try:
+    from pyflowmeld.utils import tools
+except ModuleNotFoundError:
+    from .. utils import tools 
+
+#--- useful for defining min and max in domains ---#
+@dataclass 
+class ZoneConfig:
+    """ 
+    configuration for liquid release zone
+    """
+    x_min: int = 0
+    x_max: int = 0
+    y_min: int = 0
+    y_max: int = 0
+    z_min: int = 0
+    z_max: int = 0 
 
 #-------------------------------------#
 #   Bounce back generation class      #

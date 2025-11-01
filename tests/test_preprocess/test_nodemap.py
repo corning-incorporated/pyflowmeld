@@ -24,8 +24,9 @@ import pytest
 import numpy as np
 from pathlib import Path 
 
-from pyflowmeld.preprocess._base import NodeMap
-from pyflowmeld.preprocess.nodemap import DryingNodeMap 
+from pyflowmeld.preprocess._base import NodeMap, ZoneConfig
+from pyflowmeld.preprocess.nodemap import DryingNodeMap
+ 
 
 
 class ConcreteNodeMap(NodeMap):
@@ -209,4 +210,25 @@ class TestDryingNodeMap:
         assert nm.file_stem == "dry_default"
         assert nm.save_path == Path(temp_dir)
         assert nm.domain_shape == shape
+    
+    def test_add_phases_gap_exceeds_domain(self, temp_dir):
+        """Test that add_phases with excessive gap_from_edge does not write outside domain."""
+        shape = (20, 20, 20)
+        domain = np.zeros(shape, dtype = int)
+        large_gap = ZoneConfig(x_min=3, x_max=4, y_min=3, y_max=4, z_min=3, z_max=4)
+        nm = DryingNodeMap(domain=domain, file_stem="dry_gap", save_path=temp_dir, gap_from_edge=large_gap)
+        nm.add_phases()
+    
+        x_start, x_end = 3, 16
+        y_start, y_end = 3, 16
+        z_start, z_end = 3, 16
+
+        inner = nm.domain[x_start:x_end, y_start:y_end, z_start:z_end]
+        assert np.all(inner == 3), "Inner fluid region should be filled with 3s"
+
+        outside = nm.domain.copy()
+        outside[x_start:x_end, y_start:y_end, z_start:z_end] = 0
+        assert not (outside == 3).any(), "No fluid should be added outside the specified region"
+    
+
 
