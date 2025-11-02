@@ -120,7 +120,6 @@ class DropletSpread(NodeMap):
 # ######################################### #
 #   Nodemap class for Drying problems       #
 # ######################################### #
-
 class DryingNodeMap(NodeMap):
     """
     A specialized class for generating LBM-compatible node maps for drying simulations. 
@@ -142,39 +141,6 @@ class DryingNodeMap(NodeMap):
     Methods:
         add_phases(): Adds water phase into the domain based on the specified configuration.
         add_file_info(): Writes domain and configuration information to a text file.
-
-    Examples:
-        --------------------------------------------
-        Basic Drying Simulation with Padding:
-        --------------------------------------------
-        >>> domain = np.zeros((100, 100, 100))
-        >>> dn_map = DryingNodeMap(
-        ...     domain=domain, 
-        ...     padding=[2, 2, 2, 2, 0, 0], 
-        ...     distance_from_edge=[3, 3, 3, 3, 0, 0]
-        ... )
-        >>> dn_map.add_phases()
-
-        --------------------------------------------
-        Adding Release Boundary:
-        --------------------------------------------
-        >>> domain = np.zeros((60, 60, 60))
-        >>> dn_map = DryingNodeMap(
-        ...     domain=domain,
-        ...     phase_release_boundary=[45, 0, 0, 0, 0, 0]
-        ... )
-        >>> dn_map.add_phases()
-
-        --------------------------------------------
-        Geometrical Sidewalls and Full Padding:
-        --------------------------------------------
-        >>> domain = np.ones((100, 100, 100))
-        >>> dn_map = DryingNodeMap(
-        ...     domain=domain,
-        ...     padding=[4, 4, 4, 4, 4, 4],
-        ...     side_walls=[2, 0, 2, 0, 2, 0]
-        ... )
-        >>> dn_map.add_phases()
     """
     def __init__(
         self, 
@@ -297,37 +263,6 @@ class DryingNodeMap(NodeMap):
                 - "circ": Uses circular shifts to detect boundary and solid nodes.
                 - "edt": Uses Euclidean Distance Transform to classify nodes.
                 Defaults to "circ".
-
-        Behavior:
-            - Applies padding, sidewalls, release boundaries, and bounce-back conditions.
-            - Generates fluid, boundary, and solid phases in the domain.
-            - Exports the processed domain for documentation and visualization.
-
-        Raises:
-            ValueError: If an invalid `bounce_method` is provided.
-
-        Example Usage:
-            --------------------------------------------
-            Basic Drying Simulation:
-            --------------------------------------------
-            >>> domain = np.ones((40, 40, 40))  # Initial empty domain
-            >>> drying_map = DryingNodeMap(
-            ...     domain=domain,
-            ...     padding=[2, 2, 0, 0, 0, 0],
-            ...     distance_from_edge=[3, 3, 3, 3, 0, 0]
-            ... )
-            >>> drying_map(separate=True, vtk=True, bounce_method="circ")
-
-            --------------------------------------------
-            Exporting with Sidewalls:
-            --------------------------------------------
-            >>> domain = np.random.choice([0, 1], size=(20, 20, 20))
-            >>> drying_map = DryingNodeMap(
-            ...     domain=domain, 
-            ...     side_walls=[1, 1, 1, 1, 0, 0]
-            ... )
-            >>> drying_map(separate=False, vtk=False, bounce_method="edt")
-
         """
         super().__call__(separate=separate, vtk=vtk, bounce_method=bounce_method)
         self.add_file_info()
@@ -335,12 +270,19 @@ class DryingNodeMap(NodeMap):
 
 # ############################## #
 #      helper functions          #
-# ############################## #  
-# #### drying nodemap helper functions #### #
+# ############################## # 
+
+# ------------------------------- #
+#  helpers to generate benchmarks #
+# ------------------------------- # 
+BENCHMARK_REGISTRY = {
+    "overlapping-spheres": benchmarks.OverlappingSpherePack,
+}
+ 
 def drying_nodemap_from_benchmark(
-    benchmark: Optional[str] = None, 
+    benchmark: str, 
     save_path: Optional[Union[str, Path]] = None, 
-    distance_from_edge: Optional[Union[int, List[int]]] = None,
+    gap_from_edge: Optional[Union[int, List[int], ZoneConfig]] = None,
     padding: Optional[Union[int, List[int]]] = None, 
     side_walls: Optional[Union[int, List[int]]] = None, 
     geometry_side_walls: Optional[Union[int, List[int]]] = [0] * 6, 
@@ -348,78 +290,21 @@ def drying_nodemap_from_benchmark(
     bounce_method: Literal["circ", "edt"] = "circ", 
     vtk: bool = False, 
     **benchmark_kw: Any
-) -> None:
+    ) -> None:
     """
-    Generates and exports drying LBM node maps based on a benchmark geometry.
-
-    This helper function creates a simulation domain using a predefined benchmark 
-    geometry (e.g., overlapping spheres) and processes it with drying nodemap configurations. 
-    The result is exported in various formats (`.dat`, `.csv`, `.vtk`).
-
-    Args:
-        benchmark (Optional[str]): The name of the benchmark geometry to use.
-            - `"overlapping-spheres"` is currently supported.
-        save_path (Optional[Union[str, Path]]): Directory to save the output files. 
-            If None, creates a directory based on the current date and time.
-        distance_from_edge (Optional[Union[int, List[int]]]): Distance from edges 
-            to restrict fluid phase addition.
-        padding (Optional[Union[int, List[int]]]): Padding values for all six dimensions 
-            [x_min, x_max, y_min, y_max, z_min, z_max].
-        side_walls (Optional[Union[int, List[int]]]): Thickness of side walls around six dimensions.
-        geometry_side_walls (Optional[Union[int, List[int]]]): Geometry-specific side walls 
-            (default is zeros for no walls).
-        separate (bool, optional): 
-            If True, creates separate `.csv` files for fluid (air), boundary, and solid nodes. Defaults to True.
-        bounce_method (Literal["circ", "edt"], optional): 
-            The method used to classify bounce-back regions. Defaults to "circ".
-        vtk (bool, optional): 
-            If True, includes a `.vtk` export for visualization purposes. Defaults to False.
-        **benchmark_kw (Any): Additional keyword arguments passed to the benchmark geometry generator.
-
-    Raises:
-        KeyError: If an invalid benchmark name is provided.
-        FileNotFoundError: If the benchmark geometry fails to generate.
-        ValueError: If critical parameters (e.g., padding) are invalid.
-
-    Notes:
-        - The generated benchmarks are highly customizable through `benchmark_kw`.
-        - Supports multiple formats for exporting the processed domain, such as `.dat`, `.csv`, and `.vtk`.
-
-    Example Usage:
-        --------------------------------------------
-        Basic Drying Simulation with Spheres:
-        --------------------------------------------
-        >>> drying_nodemap_from_benchmark(
-        ...     benchmark="overlapping-spheres",
-        ...     save_path="./sim_data",
-        ...     padding=[1, 1, 1, 1, 0, 0],
-        ...     distance_from_edge=[2, 2, 0, 0, 0, 0],
-        ...     separate=True,
-        ...     vtk=True
-        ... )
-
-        --------------------------------------------
-        Drying Benchmark with Custom Sidewalls:
-        --------------------------------------------
-        >>> drying_nodemap_from_benchmark(
-        ...     benchmark="overlapping-spheres",
-        ...     side_walls=[1, 2, 3, 4, 0, 0],
-        ...     separate=False
-        ... )
+    generates drying nodemap from registered benchmarks
     """
-    
-    _SUPPORTED_BENCHMARKS = ["overlapping-spheres"]
-    if benchmark not in _SUPPORTED_BENCHMARKS:
-        raise KeyError(
-            f"The benchmark '{benchmark}' is not supported. Choose from {_SUPPORTED_BENCHMARKS}."
-        )
+    if benchmark not in BENCHMARK_REGISTRY:
+        raise KeyError(f"requested benchmark {benchmark} does not exist in the registry")
     
     try:
-        benchmark_obj = {'overlapping-spheres':benchmarks.OverlappingSpherePack}[benchmark](**benchmark_kw)
+        benchmark_obj = BENCHMARK_REGISTRY[benchmark](**benchmark_kw)
     except Exception as e:
-        raise FileNotFoundError(f"Failed to initialize benchmark '{benchmark}': {e}")
+        print(f"failed to create the benchmark object {e}")
     
-    benchmark_obj()
+    benchmark_obj() 
+    
+    
 
     save_path = save_path + '_' + datetime.now().strftime('%Y-%m-%d-%H-%M')
     if save_path is not None and not path.exists(save_path):

@@ -182,32 +182,6 @@ uv pip install -e .
 
 ---
 
-### 🐳 Using Docker (Optional)
-
-Create a `Dockerfile` like:
-
-```dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-RUN pip install -e .
-
-CMD ["python"]
-```
-
-Build and run the image:
-```bash
-docker build -t pyflowmeld .
-docker run -it -v $(pwd)/data:/app/data pyflowmeld
-```
-
----
-
 ## 🐧 Windows & Linux/Mac Activation Reference
 
 - **Linux/Mac**: `source venv/bin/activate` or `source .venv/bin/activate`
@@ -370,8 +344,6 @@ python -m pytest tests/test_flowphysics.py
 # Run with coverage
 python -m pytest --cov=pyflowmeld tests/
 
-# Generate HTML coverage report
-python -m pytest --cov=pyflowmeld --cov-report=html tests/
 ```
 *On Windows, make sure to activate your environment as shown above before running these commands.*
 

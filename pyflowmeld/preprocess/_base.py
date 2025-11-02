@@ -79,14 +79,6 @@ class BounceBackGen:
         process_outlet(): Processes the outlet direction and generates bounce-back nodes.
         __call__(): Integrates processing of inlet, intermediate stack, and outlet nodes.
 
-    Examples:
-        >>> domain = np.random.choice([0, 1], size=(50, 50, 50))
-        >>> bounce_gen = BounceBackGen(domain=domain)
-        >>> bounce_back_nodes = bounce_gen()
-        domain is generated in 0.012 seconds ...
-
-        Here, `bounce_back_nodes` will be a 3D array containing processed node states
-        based on the input `domain` configuration.
     """
     # i
     i_shifts = [1, -1, 1, -1, (1,1), (-1,1), (1, -1), (-1, -1)]
@@ -340,17 +332,6 @@ class NodeMap(metaclass = ABCMeta):
         from_file(): Abstract method for constructing a NodeMap from a file.
         from_lbm_dat(), from_array(): Class methods for constructing nodemap instances from different sources.
 
-    Examples:
-        >>> domain = np.zeros((10, 10, 10))
-        >>> nodemap = NodeMap(domain=domain, padding=[2, 2, 2, 2, 2, 2], save_path="./")
-
-        This creates a domain with padded boundaries. 
-        The nodemap is then exported to a `.dat` file in the specified directory.
-
-    Notes:
-        - This is an abstract base class intended for subclassing. The `add_phases` method must be implemented
-          in any subclass defining specific nodemap behavior for multiphase simulations, drying simulations, etc.
-     for all nodemap generators
     """
     def __init__(
         self, 
@@ -691,27 +672,6 @@ class NodeMap(metaclass = ABCMeta):
         Raises:
             ValueError: If `bounce_method` is invalid.
 
-        Example Usage:
-            --------------------------------------------
-            Basic Usage:
-            --------------------------------------------
-            >>> domain = np.zeros((10, 10, 10))
-            >>> nodemap = NodeMap(domain=domain, padding=[1, 1, 1, 1, 1, 1], save_path="./")
-            >>> nodemap(slice_direction="z", vtk=True)  # Generates processed nodemap with slices along z-axis.
-
-            --------------------------------------------
-            Exporting Boundary Nodes with Bounce-Back:
-            --------------------------------------------
-            >>> domain = np.random.choice([0, 1, 2], size=(15, 15, 15))
-            >>> nodemap = MultiPhaseNodeMap(domain=domain, set_phases={'method': 'drainage'})
-            >>> nodemap(bounce_method="edt", separate=True)  # Exports `.dat`, `.csv` files with detailed boundary nodes.
-
-            --------------------------------------------
-            Skipping Slice and VTK Export:
-            --------------------------------------------
-            >>> domain = np.ones((20, 20, 20))
-            >>> nodemap = DryingNodeMap(domain=domain, padding=[0, 0, 0, 0, 0, 0], save_path="./outputs")
-            >>> nodemap(slice_direction=None, vtk=False)  # Creates nodemap but skips slicing and `.vtk` export.
         """
         # note: add_sidewalls and add_edges should be added before set_bounceback 
     
@@ -782,28 +742,6 @@ class NodeMap(metaclass = ABCMeta):
             side_walls (Optional[Union[int, List[int]]]): Thickness of the sidewalls for all six dimensions.
                                                      Defaults to None (no sidewalls).
             **kw (Any): Additional arguments for subclass-specific configurations.
-
-        Returns:
-            NodeMap: A NodeMap instance initialized with the domain grid read from the `.dat` file.
-
-        Raises:
-            FileNotFoundError: If `file_name` does not exist.
-            ValueError: If the domain shape does not match `domain_size` or the `.dat` file format is invalid.
-
-        Details:
-            - The `.dat` file is assumed to contain flattened 3D grid data with 0s and 1s as mentioned above:
-                - 0: Void (fluid)
-                - 1: Solid
-                - other values for solids are accepted, such as 2 for boundary nodes. So it is possible
-                    to reuse LBM nodemap files and change the padding or sidewalls
-    
-            - Domain resolution (`domain_size`) must match the actual dimensions of the file.
-
-        Example:
-            >>> file_path = "./data/lbm_domain.dat"
-            >>> domain_size = (100, 100, 100)
-            >>> node_map = NodeMap.from_file(file_path, domain_size, padding=[1, 1, 1, 1, 0, 0])
-            >>> print(node_map.domain.shape)  # Output: (102, 102, 100)
         """
         file_path = Path(file_path)
         if not file_path.exists():
