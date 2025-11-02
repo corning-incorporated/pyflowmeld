@@ -192,6 +192,18 @@ class TestNodeMap:
         nm3 = ConcreteNodeMap.from_file(file_path2, domain_size=shape)
         assert nm3.domain_shape == shape
         assert np.array_equal(nm3.domain, domain)
+    
+    #-- testing class instatiations --#
+    def test_from_domain_array_basic_function(self, temp_dir):
+        domain = np.random.randint(0,2,(20,30,20))
+        nmap = ConcreteNodeMap.from_domain_array(domain, file_stem = "from_array", 
+            save_path =temp_dir, padding = [4,4,0,0,0,0], 
+                side_walls = [0,0,2,2,2,2],)
+        assert isinstance(nmap, ConcreteNodeMap), "from_domain_array does not instantiate teh class"
+        assert nmap.save_path == Path(temp_dir)
+        assert np.array_equal(nmap.padding, np.array([4,4,0,0,0,0])), "incorrect padding"
+        assert np.array_equal(nmap.side_walls, np.array([0,0,2,2,2,2])), "incorrect side walls"
+        assert nmap.domain_shape == (20,30,20), "shape not correct"
 
 #--------------------------------------#
 #    tests for DryingNodeMap class     #
