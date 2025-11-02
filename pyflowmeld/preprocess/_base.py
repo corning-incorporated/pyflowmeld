@@ -21,7 +21,7 @@ import sys
 import timeit 
 import numpy as np
 import pandas as pd
-from typing import Optional, Literal, Union, List, Any, Tuple, Iterable
+from typing import Optional, Literal, Union, List, Any, Tuple, Iterable, Dict 
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
 from os import path, makedirs, PathLike
@@ -845,61 +845,20 @@ class NodeMap(metaclass = ABCMeta):
                    **kw)
 
     @classmethod
-    def from_array(
-        cls,
+    def from_domain_array(
+        cls: type["NodeMap"],
         domain: np.ndarray,
-        padding: Optional[Union[int, List[int]]] = None,
-        save_path: Optional[Union[str, PathLike]] = None,
-        file_stem: Optional[str] = None,
-        **kw: Any
+        **kwargs: Any,
     ) -> "NodeMap":
         """
-        Instantiates a NodeMap directly from a domain array.
-
-        Args:
-            domain (np.ndarray): A 3D array representing the simulation domain.
-                    Each element indicates node type:
-                    - 0 for void (fluid)
-                    - 1 for solid
-            padding (Optional[Union[int, List[int]]]): Padding array specifying padding values for all six dimensions.
-                                                   Defaults to None (no padding).
-            save_path (Optional[Union[str, PathLike]]): Directory where outputs and processed files will be saved.
-                                                    Defaults to the current directory.
-            file_stem (Optional[str]): File stem to name the outputs. Defaults to "node_map".
-            **kw (Any): Additional keyword arguments for subclass-specific configurations.
-
-        Returns:
-            NodeMap: A NodeMap instance initialized with the provided domain array.
-
-        Raises:
-            ValueError: If the domain is not a valid 3D numpy array.
-
-        Example:
-            >>> domain = np.zeros((10, 10, 10), dtype=int)
-            >>> node_map = NodeMap.from_array(
-            ...     domain=domain,
-            ...     padding=[1, 1, 1, 1, 0, 0],
-            ...     save_path="./outputs",
-            ...     file_stem="custom_map"
-            ... )
-            >>> print(node_map.domain.shape)  # Output: (12, 12, 10) after padding
+        Instantiates a NodeMap (or subclass) from a numpy domain array.
+        Additional configuration is passed via kwargs.
         """
-        if not isinstance(domain, np.ndarray) or domain.ndim != 3:
-            raise ValueError("The domain must be a 3D numpy array.")
+        if not isinstance(domain, np.ndarray):
+            raise ValueError("The domain must be a numpy array.")
+        if domain.ndim != 3:
+            raise ValueError("Domain must be a 3D array")
 
-        save_path_normalized = Path(save_path) if save_path is not None else Path.cwd()
-
-        padding_normalized = cls._normalize_input(padding, default=0)
-
-        file_stem_normalized = file_stem if file_stem is not None else "node_map"
-
-        init_kw = {
-            "domain": domain,
-            "padding": padding_normalized,
-            "save_path": save_path_normalized,
-            "file_stem": file_stem_normalized,
-            **kw,
-        }
-        return cls(**init_kw) 
+        return cls(domain, **kwargs) 
 
 
