@@ -18,11 +18,24 @@
 #               heinedr@corning.com                                                  #
 # ################################################################################## #
 
-from os import path, makedirs, PathLike  
+import sys 
+from os import path, makedirs, PathLike
+from pathlib import Path   
 from typing import Optional, Sequence, Tuple   
 import numpy as np 
 import pandas as pd
-from . import tools  
+
+from pyflowmeld import find_package_root
+
+package_root = find_package_root(Path(__file__))
+if str(package_root) not in sys.path:
+    sys.path.insert(0, str(package_root))
+
+try:
+    from pyflowmeld.utils import tools
+except ModuleNotFoundError:
+    from . utils import tools 
+
 
 # ####################################### #
 # Spheres with controlled porosity        #
@@ -36,26 +49,31 @@ class OverlappingSpherePack:
     poly_max_factor: factor to multiply the radii for incorporating polydispersity: a number larger than 1
     In this method, seeds inflate until reaching a designated porosity
     """
-    def __init__(self, domain_size: np.ndarray, num_spheres: int,
-                     porosity: float = 0.5, delta: float = 1.0, save: bool = False,
-                         save_path: Optional[PathLike] = None, 
-                        poly_max_factor: Optional[float] = None, drainage_swap_axes: Optional[Tuple] = None,
-                          drainage_side_walls: Sequence = [0]*6):
+    def __init__(
+        self, 
+        domain_size: Tuple,
+        num_spheres: int,
+        porosity: float = 0.5,
+        delta: float = 1.0,
+        save: bool = False,
+        save_path: Optional[Path] = None, 
+        poly_max_factor: Optional[float] = None,
+        drainage_swap_axes: Optional[Tuple] = None,
+        drainage_side_walls: Sequence = (0,)*6):
         
-        self.domain = np.zeros(domain_size)
+        self.domain_shape = domain_size 
+        self.domain = np.zeros(self.domain_shape)
         self.res_x, self.res_y, self.res_z = domain_size 
-        self.domain_size = domain_size 
-        self.domain_volume = self.res_x*self.res_y*self.res_z 
+        self.domain_volume = np.prod(self.domain_shape)
+
         x_seeds = np.random.uniform(0, self.res_x, num_spheres)
         y_seeds = np.random.uniform(0, self.res_y, num_spheres)
         z_seeds = np.random.uniform(0, self.res_z, num_spheres)
-        self.seed_coordinates = np.c_[x_seeds[:,None], y_seeds[:, None], z_seeds[:, None]]
+        self.seed_coordinates = np.c_[x_seeds, y_seeds, z_seeds]
 
         # generates a polydisperse pack
-        self.poly_radii = None 
-        if poly_max_factor is not None:
-            self.poly_radii = np.random.uniform(1, poly_max_factor, num_spheres)
-
+        self.poly_radii = np.random.uniform(1, poly_max_factor, num_spheres) if poly_max_factor is not None else None  
+        
         self.porosity = porosity
         self.delta = delta
         self.xx, self.yy, self.zz = np.meshgrid(np.arange(0, self.res_x), np.arange(0, self.res_y), 
@@ -66,19 +84,19 @@ class OverlappingSpherePack:
                 makedirs(save_path)
             self.save_path = save_path
 
-        self._drainage_swap_axes = None 
-        if drainage_swap_axes is not None:
-            self._drainage_swap_axes = drainage_swap_axes 
-            self.drainage_domain = None 
-            self.side_walls = drainage_side_walls 
+        self._drainage_swap_axes = drainage_swap_axes  
+        self.drainage_domain = None 
+        self.side_walls = drainage_side_walls if drainage_swap_axes is not None  None   
  
     def _solid_fraction_index(self, domain: np.ndarray) -> Tuple[float, Tuple]:
         solid_fraction = np.sum(domain)/self.domain_volume 
         solid_index = np.where(domain == 1)
         return solid_fraction, solid_index 
 
-    def solid_content_monodisperse_is(self, domain: np.ndarray,
-                                       radius: float) -> Tuple[float, Tuple]:
+    def solid_content_monodisperse_is(
+        self, 
+        domain: np.ndarray,
+        radius: float) -> Tuple[float, Tuple]:
         for coord in self.seed_coordinates:
             index = np.where((self.xx - coord[0])**2 + (self.yy - coord[1])**2 + 
                                     (self.zz - coord[2])**2 <= radius**2)
@@ -86,8 +104,9 @@ class OverlappingSpherePack:
         
         return self._solid_fraction_index(domain)
     
-    def solid_content_polydisperse_is(self, domain: np.ndarray,
-                                       radii: np.ndarray) -> Tuple[float, Tuple]:
+    def solid_content_polydisperse_is(
+        self, domain: np.ndarray,
+        radii: np.ndarray) -> Tuple[float, Tuple]:
         for coord, radius in zip(self.seed_coordinates, radii):
             index = np.where((self.xx - coord[0])**2 + (self.yy - coord[1])**2 + 
                                     (self.zz - coord[2])**2 <= radius**2) 
@@ -95,7 +114,9 @@ class OverlappingSpherePack:
         
         return self._solid_fraction_index(domain)
 
-    def save_drainage_domain(self, save_path: PathLike) -> None:
+    def save_drainage_domain(
+        self, 
+        save_path: Path) -> None:
         res_x, res_y, res_z = self.drainage_domain.shape 
         xx, yy, zz = np.meshgrid(np.arange(0, res_x,), 
                                     np.arange(0, res_y), 
@@ -113,24 +134,20 @@ class OverlappingSpherePack:
     
     def _generate_drainage_domain(self) -> None:
         drainage_domain = np.copy(self.domain)
-        if self.side_walls[0] != 0:
-            drainage_domain = drainage_domain[self.side_walls[0]:,:,:] 
-        if self.side_walls[1] != 0:
-            drainage_domain = drainage_domain[:-self.side_walls[1],:,:] 
+        shape = drainage_domain.shape 
+        slices = []
 
-        if self.side_walls[2] != 0 :
-            drainage_domain = drainage_domain[:,self.side_walls[2]:,:] 
-        if self.side_walls[3] != 0:
-            drainage_domain = drainage_domain[:,:-self.side_walls[3],:] 
-        
-        if self.side_walls[4] != 0:
-            drainage_domain = drainage_domain[:,:,self.side_walls[4]:] 
-        if self.side_walls[5] != 0:
-            drainage_domain = drainage_domain[:,:,:-self.side_walls[5]]
-        
-        self.drainage_domain = np.swapaxes(drainage_domain, self._drainage_swap_axes[0], 
-                                                    self._drainage_swap_axes[1])
+        for i in range(3):
+            min_sw = self.side_walls[2*i]
+            max_sw = self.side_walls[2*i + 1]
+            start = min_sw 
+            end = shape[i] - max_sw if max_sw != 0 else shape[i] 
+            slices.append(slice(start, end))
+
+        drainage_domain = drainage_domain[slices[0], slices[1], slices[2]]
+        self.drainage_domain = np.swapaxes(drainage_domain, self._drainage_swap_axes[0], self._drainage_swap_axes[1])
                 
+    #--- call inflates sphers until reaching a designated fraction ---#
     def __call__(self):
         """ Note: coarse implementation of count results in overstepping porosity limits"""
         solid_fraction = 0 
