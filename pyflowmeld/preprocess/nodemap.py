@@ -150,7 +150,7 @@ class DryingNodeMap(NodeMap):
         padding: Optional[Union[int, List[int]]] = None, 
         side_walls: Optional[Union[int, List[int]]] = None, 
         geometry_side_walls: Optional[Union[int, List[int]]] = None, 
-        gap_from_edge: Optional[ZoneConfig] = None
+        gap_from_edge: Optional[Union[List[int], int, ZoneConfig]] = 2,
     ) -> None:
         """
         Initializes the DryingNodeMap class.
@@ -177,13 +177,21 @@ class DryingNodeMap(NodeMap):
             geometry_side_walls=geometry_side_walls
         )
 
-        self.gap_from_edge = ZoneConfig(
-            x_min = 2,
-            y_min = 2,
-            z_min = 2,
-            x_max = 2, 
-            y_max = 2,
-            z_max = 2) if gap_from_edge is None else gap_from_edge  
+        self.gap_from_edge = self._normalize_gap_from_edge(gap_from_edge)
+
+    @staticmethod 
+    def _normalize_gap_from_edge(gap, default: int = 2):
+        if gap is None:
+            return ZoneConfig(x_min=default, x_max=default, y_min=default, y_max=default, z_min=default, z_max=default)
+        if isinstance(gap, ZoneConfig):
+            return gap
+        if isinstance(gap, int):
+            return ZoneConfig(x_min=gap, x_max=gap, y_min=gap, y_max=gap, z_min=gap, z_max=gap)
+        if isinstance(gap, (list, tuple, np.ndarray)):
+            if len(gap) != 6:
+                raise ValueError("gap_from_edge as a list/tuple/array must be length 6.")
+            return ZoneConfig(*gap)
+        raise ValueError("gap_from_edge must be int, list/tuple/array of length 6, ZoneConfig, or None")
     
     @property
     def domain_boundaries(self) -> ZoneConfig:
@@ -289,6 +297,8 @@ def drying_nodemap_from_benchmark(
     separate: bool = True, 
     bounce_method: Literal["circ", "edt"] = "circ", 
     vtk: bool = False, 
+    overwrite: bool = False,
+    include_drainage_domain: bool = False,  
     **benchmark_kw: Any
     ) -> None:
     """
@@ -303,9 +313,28 @@ def drying_nodemap_from_benchmark(
         print(f"failed to create the benchmark object {e}")
     
     benchmark_obj() 
+    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M')
+    base_dir = Path(save_path) if save_path is not None else Path.cwd()
+    out_dir = base_dir/f"{benchmark}_{timestamp}"
+    if out_dir.exists():
+        if overwrite:
+            pass 
+        else:
+            raise FileExistsError(f"output directory is {out_dir} already exists")
+    else:
+        out_dir.mkdir(parents = True, exist_ok=True)
     
     
-
+    drying_map = DryingNodeMap.from_domain_array(
+        domain = benchmark_obj.domain, 
+        save_path = out_dir, 
+        gap_from_edge = gap_from_edge, 
+        side_walls = side_walls, 
+        geometry_side_walls = geometry_side_walls, 
+        padding = padding)
+    drying_map(separate = separate, bounce_method = bounce_method, vtk = vtk)
+        
+    
     save_path = save_path + '_' + datetime.now().strftime('%Y-%m-%d-%H-%M')
     if save_path is not None and not path.exists(save_path):
         makedirs(save_path)
@@ -315,12 +344,12 @@ def drying_nodemap_from_benchmark(
                                  file_stem = benchmark, padding = padding)
     drying_map(separate = separate, bounce_method = bounce_method, vtk = vtk)
     
-    if hasattr(benchmark_obj, 'drainage_domain'):
-        benchmark_obj.save_drainage_domain(save_path = save_path)
+    if include_drainage_domain:
+        if hasattr(benchmark_obj, 'drainage_domain'):
+            benchmark_obj.save_drainage_domain(save_path = save_path)
     
     if hasattr(benchmark_obj, 'domain_attributes'):
         benchmark_obj.save_attributes(save_path = save_path)
-    print(f'save path is {save_path}')
 
  
 
