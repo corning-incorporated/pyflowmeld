@@ -21,7 +21,7 @@
 import sys 
 from os import path, makedirs, PathLike
 from pathlib import Path   
-from typing import Optional, Sequence, Tuple   
+from typing import Optional, Sequence, Tuple, Union   
 import numpy as np 
 import pandas as pd
 
@@ -58,7 +58,7 @@ class OverlappingSpherePack:
         save_path: Optional[Path] = None, 
         poly_max_factor: Optional[float] = None,
         drainage_swap_axes: Optional[Tuple] = None,
-        drainage_side_walls: Optional[Sequence | int] = None):
+        drainage_side_walls: Optional[Union[Sequence, int]] = None):
 
         if not isinstance(num_spheres, int) or num_spheres <= 0:
             raise ValueError("num_spheres must be a positive integer.")
@@ -169,7 +169,7 @@ class OverlappingSpherePack:
         slices = []
 
         for i in range(3):
-            min_sw = self.drainage_side_walls[2*i] if 
+            min_sw = self.drainage_side_walls[2*i] 
             max_sw = self.drainage_side_walls[2*i + 1]
             start = min_sw 
             end = shape[i] - max_sw if max_sw != 0 else shape[i] 
