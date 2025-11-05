@@ -42,8 +42,7 @@ except ModuleNotFoundError:
 # ####################################### #
 class OverlappingSpherePack:
     """
-    generates overlapping spheres 
-    with controlled porosity
+    generates overlapping spheres  with controlled porosity
     drainage_swap_axes: if not None generates a geometry for drainage; 
     walls for drainage are added by the nodemap generator 
     poly_max_factor: factor to multiply the radii for incorporating polydispersity: a number larger than 1
@@ -59,7 +58,29 @@ class OverlappingSpherePack:
         save_path: Optional[Path] = None, 
         poly_max_factor: Optional[float] = None,
         drainage_swap_axes: Optional[Tuple] = None,
-        drainage_side_walls: Sequence = (0,)*6):
+        drainage_side_walls: Optional[Sequence | int] = None):
+
+        if not isinstance(num_spheres, int) or num_spheres <= 0:
+            raise ValueError("num_spheres must be a positive integer.")
+        if poly_max_factor is not None and (not isinstance(poly_max_factor, (float, int)) or poly_max_factor <= 1):
+            raise ValueError("poly_max_factor must be > 1.")
+        if drainage_swap_axes is not None:
+            if (not isinstance(drainage_swap_axes, (tuple, list)) or 
+                len(drainage_swap_axes) != 2 or
+                not all(ax in [0,1,2] for ax in drainage_swap_axes)):
+                raise ValueError("drainage_swap_axes must be a tuple of two axis indices (0,1,2).")
+
+        if drainage_side_walls is None:
+            self.drainage_side_walls = [0]*6
+        elif isinstance(drainage_side_walls, int):
+            if drainage_side_walls < 0:
+                raise ValueError("drainage_side_walls must be non-negative.")
+            self.drainage_side_walls = [drainage_side_walls]*6
+        elif (isinstance(drainage_side_walls, (list, tuple)) and len(drainage_side_walls) == 6 
+            and all(isinstance(w, int) and w >= 0 for w in drainage_side_walls)):
+            self.drainage_side_walls = list(drainage_side_walls)
+        else:
+            raise ValueError("drainage_side_walls must be None, int, or sequence of six non-negative ints.")
         
         self.domain_shape = domain_size 
         self.domain = np.zeros(self.domain_shape)
@@ -78,15 +99,18 @@ class OverlappingSpherePack:
         self.delta = delta
         self.xx, self.yy, self.zz = np.meshgrid(np.arange(0, self.res_x), np.arange(0, self.res_y), 
                                                         np.arange(0, self.res_z), indexing = 'ij') 
-        self.save_path = None 
+        self.save_path = None
         if save:
-            if not path.exists(save_path):
-                makedirs(save_path)
-            self.save_path = save_path
+            if save_path is None:
+                raise ValueError("save_path must be specified if save is True.")
+            sp = Path(save_path)
+            sp.mkdir(parents=True, exist_ok=True)
+            self.save_path = sp
 
-        self._drainage_swap_axes = drainage_swap_axes  
-        self.drainage_domain = None 
-        self.side_walls = drainage_side_walls if drainage_swap_axes is not None  None   
+        # Drainage config
+        self._drainage_swap_axes = drainage_swap_axes
+        self.drainage_domain = None
+            
  
     def _solid_fraction_index(self, domain: np.ndarray) -> Tuple[float, Tuple]:
         solid_fraction = np.sum(domain)/self.domain_volume 
@@ -98,8 +122,9 @@ class OverlappingSpherePack:
         domain: np.ndarray,
         radius: float) -> Tuple[float, Tuple]:
         for coord in self.seed_coordinates:
-            index = np.where((self.xx - coord[0])**2 + (self.yy - coord[1])**2 + 
-                                    (self.zz - coord[2])**2 <= radius**2)
+            index = np.where((self.xx - coord[0])**2 +
+                            (self.yy - coord[1])**2 + 
+                            (self.zz - coord[2])**2 <= radius**2)
             domain[index] = 1 
         
         return self._solid_fraction_index(domain)
@@ -117,6 +142,9 @@ class OverlappingSpherePack:
     def save_drainage_domain(
         self, 
         save_path: Path) -> None:
+        if self.drainage_domain is None:
+            raise ValueError("Drainage domain has not been generated")
+
         res_x, res_y, res_z = self.drainage_domain.shape 
         xx, yy, zz = np.meshgrid(np.arange(0, res_x,), 
                                     np.arange(0, res_y), 
@@ -128,9 +156,12 @@ class OverlappingSpherePack:
         
         vtk_name = path.join(save_path, 'sphere_pack_drainage.vtk')
         dat_name = path.join(save_path, 'sphere_pack_drainage.dat')
-        tools.to_vtk(file_name = vtk_name, data_frame = domain_df)
-        np.savetxt(dat_name, self.drainage_domain.flatten(), fmt = '%d', newline = '\n', 
+        try:
+            tools.to_vtk(file_name = vtk_name, data_frame = domain_df)
+            np.savetxt(dat_name, self.drainage_domain.flatten(), fmt = '%d', newline = '\n', 
                         header = f'{res_x} {res_y} {res_z}', comments = '#')
+        except Exception as e:
+            raise IOError(f"failed to save the drainage domain {e}")
     
     def _generate_drainage_domain(self) -> None:
         drainage_domain = np.copy(self.domain)
@@ -138,8 +169,8 @@ class OverlappingSpherePack:
         slices = []
 
         for i in range(3):
-            min_sw = self.side_walls[2*i]
-            max_sw = self.side_walls[2*i + 1]
+            min_sw = self.drainage_side_walls[2*i] if 
+            max_sw = self.drainage_side_walls[2*i + 1]
             start = min_sw 
             end = shape[i] - max_sw if max_sw != 0 else shape[i] 
             slices.append(slice(start, end))
