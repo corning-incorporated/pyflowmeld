@@ -46,6 +46,6 @@ def package_root():
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory that's automatically cleaned up."""
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = Path(tempfile.mkdtemp())
     yield temp_dir
     shutil.rmtree(temp_dir)

@@ -23,16 +23,15 @@ test suite to test classes in the nodemap preprocess module
 import pytest 
 import numpy as np
 from pathlib import Path 
+from datetime import datetime 
 
 from pyflowmeld.preprocess._base import NodeMap, ZoneConfig
-from pyflowmeld.preprocess.nodemap import DryingNodeMap
+from pyflowmeld.preprocess.nodemap import DryingNodeMap, drying_nodemap_from_benchmark
  
-
 
 class ConcreteNodeMap(NodeMap):
     def add_phases(self):
         pass 
-
 
 #--- Test class for NodeMap Base class ---#
 class TestNodeMap:
@@ -53,7 +52,6 @@ class TestNodeMap:
         assert nm.domain_shape ==  shape
         assert np.isclose(nm.void_fraction, 1 - np.sum(domain)/np.prod(shape))
 
-    
     #-- testing add padding --#
     @pytest.mark.parametrize(
     "padding, expected_shape",
@@ -242,5 +240,70 @@ class TestDryingNodeMap:
         outside[x_start:x_end, y_start:y_end, z_start:z_end] = 0
         assert not (outside == 3).any(), "No fluid should be added outside the specified region"
     
+#------------------------------------------------------- #
+# test the helper function drying_nodemap_from_benchmark #
+#------------------------------------------------------- #
+class TestDryingNodemapFromBenchmark:
+    """
+    Tests for drying_nodemap_from_benchmark function in nodemap.py
+    """
 
+    def test_overlapping_spheres_basic_function(self, temp_dir):
+        # Call with valid arguments
+        shape = (12, 8, 6)
+        out_dir = temp_dir / "drying_bench"
+        drying_nodemap_from_benchmark(
+            "overlapping-spheres",
+            save_path=str(out_dir),
+            padding=[1, 1, 1, 1, 1, 1],
+            side_walls=2,
+            num_spheres=5,
+            domain_size=shape,
+            porosity=0.35,
+            delta=1.0,
+            separate=True,
+            vtk=False,
+            overwrite=False,
+        )
+        files = list(out_dir.glob('**/*'))
+        file_exists = any(f.suffix in ['.dat', '.vtk'] for f in files)
+        assert file_exists, f"No output .dat or .vtk files created in {out_dir} or its subfolders"
+
+    def test_output_directory_conflict(self, temp_dir):
+        shape = (6, 6, 6)
+        out_dir = temp_dir / "existing_bench"
+
+        timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M')
+        expected_subdir = out_dir / f"overlapping-spheres_{timestamp}"
+        expected_subdir.mkdir(parents=True, exist_ok=True)
+
+        with pytest.raises(FileExistsError):
+            drying_nodemap_from_benchmark(
+                "overlapping-spheres",
+                save_path=str(out_dir),
+                num_spheres=2,
+                domain_size=shape,
+                porosity=0.1,
+                overwrite=False,
+            )
+
+    def test_benchmark_with_drainage_domain(self, temp_dir):
+        shape = (10, 8, 7)
+        out_dir = temp_dir / "drainage"
+        drying_nodemap_from_benchmark(
+            "overlapping-spheres",
+            save_path=str(out_dir),
+            num_spheres=3,
+            domain_size=shape,
+            porosity=0.25,
+            include_drainage_domain=True,
+            drainage_swap_axes=(0, 1),  
+        )
+        drainage_subdirs = [d for d in out_dir.parent.iterdir() if d.is_dir() and d.name.startswith("drainage_")]
+        assert drainage_subdirs, f"No drainage output subdirectory found in {out_dir.parent}"
+
+        target_dir = max(drainage_subdirs, key=lambda d: d.stat().st_mtime)
+        files = list(target_dir.glob('sphere_pack_drainage.*'))
+        print(f"Drainage files found in {target_dir}:", [str(f) for f in files])
+        assert files, f"Drainage domain files not found in {target_dir}"
 

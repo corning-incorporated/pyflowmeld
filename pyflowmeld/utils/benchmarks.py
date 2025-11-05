@@ -144,6 +144,7 @@ class OverlappingSpherePack:
         save_path: Path) -> None:
         if self.drainage_domain is None:
             raise ValueError("Drainage domain has not been generated")
+        print("DEBUG: saving drainage domain")
 
         res_x, res_y, res_z = self.drainage_domain.shape 
         xx, yy, zz = np.meshgrid(np.arange(0, res_x,), 
@@ -156,6 +157,9 @@ class OverlappingSpherePack:
         
         vtk_name = path.join(save_path, 'sphere_pack_drainage.vtk')
         dat_name = path.join(save_path, 'sphere_pack_drainage.dat')
+
+        print("file names", vtk_name)
+        print("dat name ", dat_name)
         try:
             tools.to_vtk(file_name = vtk_name, data_frame = domain_df)
             np.savetxt(dat_name, self.drainage_domain.flatten(), fmt = '%d', newline = '\n', 
@@ -184,7 +188,7 @@ class OverlappingSpherePack:
         solid_fraction = 0 
         count = 1
         while solid_fraction < self.porosity:
-            domain = np.zeros(self.domain_size)
+            domain = np.zeros(self.domain_shape)
             radius = count*self.delta 
             if self.poly_radii is not None:
                 print('generating polydisperse ...')

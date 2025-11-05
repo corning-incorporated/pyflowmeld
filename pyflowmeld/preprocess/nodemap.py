@@ -339,10 +339,6 @@ def drying_nodemap_from_benchmark(
     if save_path is not None and not path.exists(save_path):
         makedirs(save_path)
     
-    drying_map = DryingNodeMap.from_array(domain = benchmark_obj.domain, save_path = save_path, distance_from_edge = distance_from_edge,
-                              side_walls = side_walls, geometry_side_walls = geometry_side_walls,
-                                 file_stem = benchmark, padding = padding)
-    drying_map(separate = separate, bounce_method = bounce_method, vtk = vtk)
     
     if include_drainage_domain:
         if hasattr(benchmark_obj, 'drainage_domain'):

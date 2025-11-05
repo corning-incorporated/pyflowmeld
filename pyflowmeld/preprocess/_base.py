@@ -325,7 +325,7 @@ class NodeMap(metaclass = ABCMeta):
 
     Methods:
         add_padding(): Adds padding to the domain (in x, y, z directions).
-        add_sidewalls(side_wall_key): Adds sidewalls to the domain based on `side_walls` or `geometry_side_walls`.
+        _add_sidewalls(side_wall_key): Adds sidewalls to the domain based on `side_walls` or `geometry_side_walls`.
         add_bounceback(): Updates the domain with bounce-back boundary conditions using the predefined method.
         add_phases(): Abstract method for adding simulation phases, implemented in subclasses.
         to_dat(), to_csv(), to_vtk(): Methods for exporting the nodemap domain in various formats.
@@ -623,10 +623,10 @@ class NodeMap(metaclass = ABCMeta):
         so the sequence is important 
         """
         if not np.all(self.geometry_side_walls == 0):
-            self.add_sidewalls("geometry")
+            self._add_sidewalls("geometry")
         self.add_padding()
         if not np.all(self.side_walls == 0):
-            self.add_sidewalls("domain")
+            self._add_sidewalls("domain")
 
     def _generate_coordinate_arrays(self) -> None:
         self.size_x, self.size_y, self.size_z = self.domain_shape 
@@ -641,10 +641,12 @@ class NodeMap(metaclass = ABCMeta):
             f.write(f"padding: {','.join([str(pad) for pad in self.padding])}\n")
             f.write(f'domain volume without padding is {self.domain_volume} & void fraction is {self.void_fraction} \n')
 
-    def __call__(self, slice_direction: Literal['x', 'y', 'z'],
-                 bounce_method: Literal['circ', 'edt'], 
-                  separate: bool = True,
-                      vtk: bool = True, multiphase: bool = True):
+    def __call__(self,
+        slice_direction: Optional[Literal['x', 'y', 'z']] = None,
+        bounce_method: Optional[Literal['circ', 'edt']]= 'circ', 
+        separate: bool = True,
+        vtk: bool = True, 
+        multiphase: bool = True):
         """
         Generates a processed nodemap domain and exports it in multiple formats, including `.dat`, `.csv`, `.vtk`.
 
