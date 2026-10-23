@@ -36,7 +36,7 @@ class Converter:
         """
         nu: kinematic viscosity in physical units 
         tau: lattice relaxation time in BGK
-        rho: density in phusical units
+        rho: density in physical units
         lattice_rho: lattice density in lattice units. 
         dx: conversion factor of lattice unit to the physical units : x(lattice) = x(physical)/dx
         """
